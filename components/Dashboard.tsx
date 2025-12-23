@@ -1,0 +1,364 @@
+
+import React, { useMemo, useState } from 'react';
+import { 
+  BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, 
+  Cell, Legend, ReferenceLine, LabelList, AreaChart, Area, PieChart, Pie
+} from 'recharts';
+import { Transaction, TransactionType, Account, RecurringTransaction, Frequency, AmountType, SmartCategoryBudget } from '../types';
+import { TrendingUp, TrendingDown, Activity, Wallet, CalendarDays, Layers, PlusCircle, ArrowUpRight, ArrowDownRight, Zap, Target, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { formatCurrency } from '../utils/currency';
+import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, getYear, subMonths } from 'date-fns';
+import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget, sortAccounts } from '../utils/finance';
+
+interface DashboardProps {
+  transactions: Transaction[];
+  recurring: RecurringTransaction[];
+  categoryBudgets: SmartCategoryBudget[];
+  accounts: Account[];
+  selectedAccountId: string | null;
+}
+
+const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, categoryBudgets, accounts, selectedAccountId }) => {
+  // Starts with all account details showing by default
+  const [showIndividualLines, setShowIndividualLines] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
+
+  const displayCurrency = selectedAccountId 
+     ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
+     : (accounts[0]?.currency || 'ILS');
+
+  // --- Monthly Performance Stats ---
+  const stats = useMemo(() => {
+    const now = new Date();
+    const currentMonthStart = startOfMonth(now);
+    const currentMonthEnd = endOfMonth(now);
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+
+    let currentIncome = 0;
+    let currentExpense = 0;
+    let lastIncome = 0;
+    let lastExpense = 0;
+
+    transactions.forEach(t => {
+      const d = parseISO(t.date);
+      const isTargetAcc = !selectedAccountId || t.accountId === selectedAccountId || t.toAccountId === selectedAccountId;
+      if (!isTargetAcc) return;
+
+      if (isWithinInterval(d, { start: currentMonthStart, end: currentMonthEnd })) {
+        if (t.type === TransactionType.INCOME) currentIncome += t.amount;
+        else if (t.type === TransactionType.EXPENSE) currentExpense += t.amount;
+      } else if (isWithinInterval(d, { start: lastMonthStart, end: lastMonthEnd })) {
+        if (t.type === TransactionType.INCOME) lastIncome += t.amount;
+        else if (t.type === TransactionType.EXPENSE) lastExpense += t.amount;
+      }
+    });
+
+    return {
+      currentIncome,
+      currentExpense,
+      netCashFlow: currentIncome - currentExpense,
+      incomeChange: lastIncome ? ((currentIncome - lastIncome) / lastIncome) * 100 : 0,
+      expenseChange: lastExpense ? ((currentExpense - lastExpense) / lastExpense) * 100 : 0
+    };
+  }, [transactions, selectedAccountId]);
+
+  // --- Category Spend for Budgets ---
+  const categorySpending = useMemo(() => {
+    const now = new Date();
+    const start = startOfMonth(now);
+    const end = endOfMonth(now);
+    const totals: Record<string, number> = {};
+    
+    transactions.forEach(t => {
+      const d = parseISO(t.date);
+      const isTargetAcc = !selectedAccountId || t.accountId === selectedAccountId || t.toAccountId === selectedAccountId;
+      if (isTargetAcc && t.type === TransactionType.EXPENSE && isWithinInterval(d, { start, end })) {
+        totals[t.category] = (totals[t.category] || 0) + t.amount;
+      }
+    });
+    return totals;
+  }, [transactions, selectedAccountId]);
+
+  const balances = useMemo(() => {
+    const accBalances: Record<string, number> = {};
+    accounts.forEach(a => accBalances[a.id] = a.initialBalance || 0);
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    transactions.forEach(t => {
+      if (t.date > todayStr) return;
+      if (t.type === TransactionType.INCOME) accBalances[t.accountId] += t.amount;
+      else if (t.type === TransactionType.EXPENSE) accBalances[t.accountId] -= t.amount;
+      else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+          accBalances[t.accountId] -= t.amount;
+          if (accBalances[t.toAccountId] !== undefined) accBalances[t.toAccountId] += t.amount;
+      }
+    });
+    return accBalances;
+  }, [transactions, accounts]);
+
+  const accountBarData = useMemo(() => {
+    return sortAccounts(accounts)
+      .filter(a => (a.type === 'checking' || a.type === 'credit' || a.type === 'cash') && (!selectedAccountId || a.id === selectedAccountId))
+      .map(a => ({
+          name: a.name,
+          balance: balances[a.id] || 0,
+          color: a.color
+      }));
+  }, [accounts, balances, selectedAccountId]);
+
+  const balanceHistory = useMemo(() => {
+    const isLiquid = (a: Account) => a.type === 'checking' || a.type === 'credit' || a.type === 'cash';
+    
+    // Default to all liquid accounts of the primary currency
+    const targetAccountIds = selectedAccountId
+        ? [selectedAccountId]
+        : accounts.filter(a => a.currency === displayCurrency && isLiquid(a)).map(a => a.id);
+    
+    if (targetAccountIds.length === 0) return [];
+    
+    const today = startOfDay(new Date());
+    const currentBalances: Record<string, number> = {};
+    targetAccountIds.forEach(id => currentBalances[id] = accounts.find(a => a.id === id)?.initialBalance || 0);
+
+    transactions.filter(t => parseISO(t.date) <= today).forEach(t => {
+        if (targetAccountIds.includes(t.accountId)) {
+            if (t.type === TransactionType.INCOME) currentBalances[t.accountId] += t.amount;
+            else currentBalances[t.accountId] -= t.amount;
+        }
+        if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) currentBalances[t.toAccountId] += t.amount;
+    });
+
+    const dataPoints: any[] = [];
+    const getSum = (bals: Record<string, number>) => Object.values(bals).reduce((s, v) => s + v, 0);
+
+    // Past 30 days
+    const tempBals = { ...currentBalances };
+    dataPoints.push({ date: format(today, 'yyyy-MM-dd'), displayDate: 'Today', balance: getSum(tempBals), type: 'actual', ...tempBals });
+    
+    for (let i = 1; i <= 30; i++) {
+        const d = subDays(today, i);
+        const dStr = format(d, 'yyyy-MM-dd');
+        transactions.filter(t => t.date === dStr).forEach(t => {
+            if (targetAccountIds.includes(t.accountId)) {
+                if (t.type === TransactionType.INCOME) tempBals[t.accountId] -= t.amount;
+                else tempBals[t.accountId] += t.amount;
+            }
+            if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) tempBals[t.toAccountId] -= t.amount;
+        });
+        dataPoints.unshift({ date: format(subDays(d, 1), 'yyyy-MM-dd'), displayDate: format(d, 'MMM d'), balance: getSum(tempBals), type: 'actual', ...tempBals });
+    }
+
+    // Future 60 days
+    const forecastBals = { ...currentBalances };
+    const activeRecs = recurring.filter(r => r.isActive).map(r => ({ ...r, next: parseISO(r.nextDueDate) }));
+    for (let i = 1; i <= 60; i++) {
+        const d = addDays(today, i);
+        const dStr = format(d, 'yyyy-MM-dd');
+        
+        transactions.filter(t => t.date === dStr).forEach(t => {
+          if (targetAccountIds.includes(t.accountId)) {
+              if (t.type === TransactionType.INCOME) forecastBals[t.accountId] += t.amount;
+              else forecastBals[t.accountId] -= t.amount;
+          }
+          if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) forecastBals[t.toAccountId] += t.amount;
+        });
+
+        activeRecs.forEach(r => {
+            if (isSameDay(r.next, d)) {
+                const amt = getSmartAmount(r, d, transactions);
+                if (targetAccountIds.includes(r.accountId)) {
+                    if (r.type === TransactionType.INCOME) forecastBals[r.accountId] += amt;
+                    else forecastBals[r.accountId] -= amt;
+                }
+                if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) forecastBals[r.toAccountId] += amt;
+                r.next = calculateNextDate(r.next, r.frequency, r.customInterval, r.customUnit);
+            }
+        });
+        dataPoints.push({ date: dStr, displayDate: format(d, 'MMM d'), forecast: getSum(forecastBals), type: 'forecast', ...forecastBals });
+    }
+
+    return dataPoints;
+  }, [transactions, recurring, accounts, selectedAccountId, displayCurrency]);
+
+  const tooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', padding: '16px', zIndex: 1000 };
+
+  return (
+    <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><TrendingUp size={24}/></div>
+            <div className={`flex items-center gap-1 text-xs font-black ${stats.incomeChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {stats.incomeChange >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
+              {Math.abs(stats.incomeChange).toFixed(1)}%
+            </div>
+          </div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Monthly Income</p>
+          <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.currentIncome, displayCurrency)}</h3>
+        </div>
+
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><TrendingDown size={24}/></div>
+            <div className={`flex items-center gap-1 text-xs font-black ${stats.expenseChange <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {stats.expenseChange > 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
+              {Math.abs(stats.expenseChange).toFixed(1)}%
+            </div>
+          </div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Monthly Expenses</p>
+          <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.currentExpense, displayCurrency)}</h3>
+        </div>
+
+        <div className="bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Zap size={24}/></div>
+            <div className="text-[10px] font-black text-brand-400 uppercase tracking-widest bg-brand-500/10 px-2 py-1 rounded-lg">Live Flow</div>
+          </div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Net Cash Flow</p>
+          <h3 className="text-2xl font-black">{formatCurrency(stats.netCashFlow, displayCurrency)}</h3>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Trend Chart */}
+        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+          <div className="flex justify-between items-center mb-8">
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Activity size={22} className="text-brand-500"/>Liquidity Trend</h3>
+              {!selectedAccountId && (
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1"><Info size={10}/> Total Liquidity Across All Relevant Accounts</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowIndividualLines(!showIndividualLines)} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border transition-all ${showIndividualLines ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                {showIndividualLines ? 'Hide Account Details' : 'Show Account Details'}
+              </button>
+            </div>
+          </div>
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={balanceHistory}>
+                <defs>
+                  <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="displayDate" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} interval={7} />
+                <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
+                <Tooltip 
+                  contentStyle={tooltipStyle} 
+                  formatter={(v: number, name: string) => [formatCurrency(v, displayCurrency), name]} 
+                />
+                <ReferenceLine x="Today" stroke="#94a3b8" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" />
+                <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" />
+                {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash')).map(acc => (
+                  <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Spend Limits Summary */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Target size={20} className="text-orange-500"/>Spend Limits</h3>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{format(new Date(), 'MMMM')}</span>
+          </div>
+          
+          <div className="space-y-5 flex-1 overflow-auto pr-2 custom-scrollbar">
+            {categoryBudgets.length > 0 ? (
+              categoryBudgets.map(budget => {
+                const spent = categorySpending[budget.categoryName] || 0;
+                const effectiveLimit = getEffectiveCategoryBudget(budget, transactions);
+                const percent = Math.min(100, (spent / effectiveLimit) * 100);
+                const isOver = spent > effectiveLimit;
+
+                return (
+                  <div key={budget.id} className="space-y-1.5">
+                    <div className="flex justify-between items-end px-1">
+                      <div className="text-xs font-black text-slate-800 truncate max-w-[120px]">{budget.categoryName}</div>
+                      <div className="text-right">
+                        <span className={`text-xs font-black ${isOver ? 'text-red-600' : 'text-slate-600'}`}>
+                          {formatCurrency(spent, displayCurrency)}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-bold ml-1">/ {Math.round(effectiveLimit)}</span>
+                      </div>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-50">
+                      <div 
+                        className={`h-full transition-all duration-700 rounded-full ${isOver ? 'bg-red-500' : (percent > 85 ? 'bg-orange-400' : 'bg-brand-500')}`} 
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-10 opacity-40">
+                <AlertCircle size={32} className="mb-2" />
+                <p className="text-xs font-black uppercase tracking-widest">No Limits Set</p>
+                <p className="text-[10px] font-medium mt-1">Configure in Recurring tab</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-slate-50">
+             <div className="p-4 bg-orange-50 rounded-2xl flex items-center gap-4 border border-orange-100">
+                <div className="p-2 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/20"><CheckCircle2 size={20}/></div>
+                <div>
+                  <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Budget Status</p>
+                  <p className="text-xs font-bold text-slate-600">
+                    {categoryBudgets.every(b => (categorySpending[b.categoryName] || 0) <= getEffectiveCategoryBudget(b, transactions))
+                      ? "All categories are on track!"
+                      : "Some categories exceed limits."}
+                  </p>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Individual Balances Bar Chart */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+          <div className="flex justify-between items-center mb-10">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Snapshot of Liquid Assets</p>
+              </div>
+          </div>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} width={100} />
+                <Tooltip 
+                    contentStyle={tooltipStyle} 
+                    cursor={{ fill: '#f8fafc' }}
+                    formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']}
+                />
+                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={32}>
+                  {accountBarData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                  <LabelList 
+                    dataKey="balance" 
+                    position="right" 
+                    formatter={(v: number) => formatCurrency(v, displayCurrency)}
+                    style={{ fontSize: '11px', fontWeight: 'bold', fill: '#64748b' }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+      </div>
+    </div>
+  );
+}
