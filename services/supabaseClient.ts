@@ -3,15 +3,27 @@ import { createClient } from '@supabase/supabase-js';
 
 const CONFIG_KEY = 'financeflow_supabase_config';
 
-// Credentials are now pulled from environment variables.
-// Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in Vercel settings.
-const DEFAULT_URL = process.env.SUPABASE_URL || "";
-const DEFAULT_KEY = process.env.SUPABASE_ANON_KEY || "";
+// Credentials are pulled from environment variables (Vercel/Production)
+const ENV_URL = process.env.SUPABASE_URL || "";
+const ENV_KEY = process.env.SUPABASE_ANON_KEY || "";
+
+/**
+ * Returns true if the environment variables are already set (e.g. on Vercel)
+ */
+export const isPreconfigured = () => {
+    return !!(ENV_URL && ENV_KEY);
+};
 
 export const getSupabaseConfig = () => {
+    // If we have environment variables, they take absolute priority
+    if (isPreconfigured()) {
+        return { url: ENV_URL, key: ENV_KEY };
+    }
+    
+    // Otherwise, check local storage (for AI Studio/Local development)
     const stored = localStorage.getItem(CONFIG_KEY);
     if (!stored) {
-        return { url: DEFAULT_URL, key: DEFAULT_KEY };
+        return { url: "", key: "" };
     }
     return JSON.parse(stored);
 };

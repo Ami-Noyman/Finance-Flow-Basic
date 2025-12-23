@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { initSupabase, saveSupabaseConfig, isConfigured, resetSupabase } from '../services/supabaseClient';
+import { initSupabase, saveSupabaseConfig, isConfigured, resetSupabase, isPreconfigured } from '../services/supabaseClient';
 import { Settings, LogIn, UserPlus, AlertCircle, CheckCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
 
 interface AuthProps {
@@ -10,13 +10,16 @@ interface AuthProps {
 
 const EMAILS_STORAGE_KEY = 'financeflow_remembered_emails';
 
-// User provided defaults
-const DEFAULT_URL = "https://lkiaivglqrjnfknqgzjv.supabase.co";
-const DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxraWFpdmdscXJqbmZrbnFnemp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTgzNzQsImV4cCI6MjA4MTI5NDM3NH0.1vpgJx-NUmwsyPrcQc79VK6ktJv6rdQP_YqbqKjMWgQ";
-
 export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
-    const [configured, setConfigured] = useState(isConfigured());
-    const [mode, setMode] = useState<'login' | 'register' | 'config' | 'reset'>(configured ? 'login' : 'config');
+    const configured = isConfigured();
+    const preconfigured = isPreconfigured();
+    
+    // If preconfigured (Vercel), we never start in 'config' mode.
+    // Otherwise (AI Studio), if not configured, start in 'config' mode.
+    const [mode, setMode] = useState<'login' | 'register' | 'config' | 'reset'>(
+        preconfigured ? 'login' : (configured ? 'login' : 'config')
+    );
+    
     const [rememberedEmails, setRememberedEmails] = useState<string[]>([]);
     
     // Auth Form State
@@ -29,8 +32,8 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
     const [configSuccess, setConfigSuccess] = useState(false);
     
     // Config Form State
-    const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_URL);
-    const [supabaseKey, setSupabaseKey] = useState(DEFAULT_KEY);
+    const [supabaseUrl, setSupabaseUrl] = useState('');
+    const [supabaseKey, setSupabaseKey] = useState('');
 
     useEffect(() => {
         const stored = localStorage.getItem(EMAILS_STORAGE_KEY);
@@ -48,7 +51,6 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         setLoading(true);
         setError(null);
         try {
-            // Trim inputs to avoid common "NetworkError" issues with invisible whitespace
             const cleanUrl = supabaseUrl.trim().replace(/\/$/, ""); 
             const cleanKey = supabaseKey.trim();
             
@@ -58,15 +60,14 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
             resetSupabase();
             saveSupabaseConfig(config);
             
-            // Test connection with a lightweight check
             const testClient = initSupabase();
             if (!testClient) throw new Error("Supabase initialization failed.");
             
-            setConfigured(true); setConfigSuccess(true); setLoading(false); 
+            setConfigSuccess(true); setLoading(false); 
             onConfigured();
             setTimeout(() => { setMode('login'); setConfigSuccess(false); }, 1500);
         } catch (err: any) {
-            setError(err.message || "Failed to save configuration. Please check your URL and Key.");
+            setError(err.message || "Failed to save configuration.");
             setLoading(false);
         }
     };
@@ -75,7 +76,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         e.preventDefault();
         setError(null); setSuccessMsg(null); setLoading(true);
         const supabase = initSupabase();
-        if (!supabase) { setError("Supabase not initialized. Go to Config tab."); setLoading(false); return; }
+        if (!supabase) { setError("Connection not configured."); setLoading(false); return; }
         const cleanEmail = email.trim();
         if (!cleanEmail || !password) { setError("Email and password required."); setLoading(false); return; }
 
@@ -91,9 +92,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                 saveRecentEmail(cleanEmail);
             }
         } catch (err: any) {
-            let msg = err.message || "Authentication error.";
-            if (msg.includes("fetch")) msg = "Network Connection Error: Please check your internet or Supabase URL/Key config.";
-            setError(msg);
+            setError(err.message || "Authentication error.");
         } finally { setLoading(false); }
     };
 
@@ -101,7 +100,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         e.preventDefault();
         setError(null); setSuccessMsg(null); setLoading(true);
         const supabase = initSupabase();
-        if (!supabase) { setError("Supabase not initialized."); setLoading(false); return; }
+        if (!supabase) { setError("Connection not configured."); setLoading(false); return; }
         const cleanEmail = email.trim();
         if (!cleanEmail) { setError("Email address is required."); setLoading(false); return; }
 
@@ -118,9 +117,13 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
                 <div className="bg-white border-b border-gray-100 p-2 flex">
-                    <button onClick={() => setMode('login')} disabled={!configured || loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'login' || mode === 'reset' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Sign In</button>
-                    <button onClick={() => setMode('register')} disabled={!configured || loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'register' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Register</button>
-                    <button onClick={() => setMode('config')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'config' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Config</button>
+                    <button onClick={() => setMode('login')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'login' || mode === 'reset' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Sign In</button>
+                    <button onClick={() => setMode('register')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'register' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Register</button>
+                    
+                    {/* ONLY SHOW CONFIG TAB IF NOT PRECONFIGURED VIA ENV VARS */}
+                    {!preconfigured && (
+                        <button onClick={() => setMode('config')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'config' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Config</button>
+                    )}
                 </div>
 
                 <div className="p-8">
