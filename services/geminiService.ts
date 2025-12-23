@@ -22,7 +22,7 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
       Instructions: ${categoriesList}
       Output: Only return the Hebrew category name, nothing else.`,
     });
-    return response.text.trim();
+    return response.text?.trim() || "כללי";
   } catch (error) {
     console.error("AI Categorization failed", error);
     return "כללי"; 
@@ -57,7 +57,7 @@ export const generateFinancialInsight = async (
         systemInstruction: "You are a professional financial advisor. Respond in Hebrew using clean Markdown formatting.",
       }
     });
-    return response.text;
+    return response.text || "שגיאה בייצור תובנות.";
   } catch (error) {
     console.error("AI Insight failed", error);
     return "שגיאה בייצור תובנות. נסה שנית מאוחר יותר.";

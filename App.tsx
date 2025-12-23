@@ -57,7 +57,7 @@ const App: React.FC = () => {
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
       setIsLoading(false);
-    }).catch(err => {
+    }).catch((err: any) => {
       console.error("Session check failed", err);
       setIsLoading(false);
     });

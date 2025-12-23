@@ -3,9 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const CONFIG_KEY = 'financeflow_supabase_config';
 
-// User provided defaults
-const DEFAULT_URL = "https://lkiaivglqrjnfknqgzjv.supabase.co";
-const DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxraWFpdmdscXJqbmZrbnFnemp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTgzNzQsImV4cCI6MjA4MTI5NDM3NH0.1vpgJx-NUmwsyPrcQc79VK6ktJv6rdQP_YqbqKjMWgQ";
+// Credentials are now pulled from environment variables.
+// Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in Vercel settings.
+const DEFAULT_URL = process.env.SUPABASE_URL || "";
+const DEFAULT_KEY = process.env.SUPABASE_ANON_KEY || "";
 
 export const getSupabaseConfig = () => {
     const stored = localStorage.getItem(CONFIG_KEY);
@@ -20,8 +21,6 @@ export const saveSupabaseConfig = (config: { url: string; key: string }) => {
 };
 
 export const isConfigured = () => {
-    // We assume it's configured since we have defaults, 
-    // but check if user has manually cleared or if key looks valid.
     const config = getSupabaseConfig();
     return !!(config.url && config.key);
 };
