@@ -13,7 +13,7 @@ interface TransactionListProps {
   categories: string[];
   selectedAccountId: string | null;
   onAddTransaction: (t: Transaction, makeRecurring?: boolean) => void;
-  onEditTransaction: (t: Transaction) => void;
+  onEditTransaction: (t: Transaction, makeRecurring?: boolean) => void;
   onDeleteTransaction: (id: string) => void;
   onAddCategory: (category: string) => void;
 }
@@ -120,7 +120,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       isReconciled: isReconciled
     };
 
-    if (editingId) onEditTransaction(txData);
+    if (editingId) onEditTransaction(txData, makeRecurring);
     else onAddTransaction(txData, makeRecurring);
     
     resetForm();
@@ -355,7 +355,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
               <div className="flex items-center gap-6 pt-2">
                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={isReconciled} onChange={e => setIsReconciled(e.target.checked)} className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500" /><span className="text-xs font-black text-gray-500 uppercase tracking-widest">Reconciled</span></label>
-                {!editingId && (<label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={makeRecurring} onChange={e => setMakeRecurring(e.target.checked)} className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500" /><span className="text-xs font-black text-gray-500 uppercase tracking-widest">Make Recurring</span></label>)}
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={makeRecurring} onChange={e => setMakeRecurring(e.target.checked)} className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500" /><span className="text-xs font-black text-gray-500 uppercase tracking-widest">Make Recurring</span></label>
               </div>
 
               <div className="pt-2"><button type="submit" disabled={isAutoCategorizing} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-3.5 rounded-xl transition-all shadow-lg flex justify-center items-center gap-2 active:scale-95 uppercase tracking-widest text-xs">{isAutoCategorizing ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Categorizing...</> : 'Persist Transaction'}</button></div>

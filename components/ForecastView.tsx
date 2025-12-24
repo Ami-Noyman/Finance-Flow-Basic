@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ComposedChart, BarChart, Bar, LabelList } from 'recharts';
-import { Transaction, RecurringTransaction, TransactionType, Account, SmartCategoryBudget, Frequency } from '../types';
+import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, Frequency } from '../types';
 import { generateFinancialInsight, createFinancialChatSession } from '../services/geminiService';
 import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard } from 'lucide-react';
 import { addDays, format, parseISO, startOfDay, isSameDay, startOfMonth, endOfMonth, differenceInDays, addMonths, isBefore, addWeeks, addYears } from 'date-fns';
@@ -75,7 +75,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Form states for tentative transactions
   const [newTentativeDate, setNewTentativeDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
   const [newTentativeAmount, setNewTentativeAmount] = useState('');
   const [newTentativePayee, setNewTentativePayee] = useState('');
@@ -90,6 +89,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
 
   const checkingAccountIds = useMemo(() => accounts.filter(a => a.type === 'checking').map(a => a.id), [accounts]);
 
+  // Fix: Cleaned up initialBalances useMemo, removed duplicated logic that was causing double-counting and confusion.
   const initialBalances = useMemo(() => {
     const today = startOfDay(new Date());
     let net = accounts.filter(a => targetAccountIds.includes(a.id)).reduce((acc, a) => acc + a.initialBalance, 0);
@@ -101,6 +101,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                 else net -= t.amount;
             }
             if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) net += t.amount;
+            
             if (checkingAccountIds.includes(t.accountId)) {
                 if (t.type === TransactionType.INCOME) check += t.amount;
                 else check -= t.amount;
@@ -113,10 +114,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
 
   const displayCurrency = selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS' : 'ILS';
 
-  // Fallback for payee content
   const getPayeeName = (r: any) => r.payee || r.description || 'Unknown Item';
 
-  // Aggregating installment payees into a unique set
   const installmentPayees = useMemo(() => {
     const payees = new Set<string>();
     recurring.forEach(r => {
@@ -167,6 +166,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     return { totalLeft, roadmap: roadmap.filter(p => p.total > 0), activePayees: installmentPayees };
   }, [recurring, installmentPayees]);
 
+  // Fix: In forecastData useMemo, renamed 'check' to 'runningChecking' to avoid scoping errors and ensure consistency.
   const forecastData = useMemo(() => {
     const points: any[] = [];
     const today = startOfDay(new Date());
@@ -204,6 +204,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
               if (t.type === TransactionType.INCOME) runningChecking += t.amount;
               else runningChecking -= t.amount;
           }
+          // Fix: replaced 'check' with 'runningChecking'
           if (t.toAccountId && checkingAccountIds.includes(t.toAccountId)) runningChecking += t.amount;
       });
 
@@ -213,6 +214,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
            if (targetAccountIds.includes(r.accountId)) { if (r.type === TransactionType.INCOME) runningBalance += amount; else runningBalance -= amount; }
            if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) runningBalance += amount;
            if (checkingAccountIds.includes(r.accountId)) { if (r.type === TransactionType.INCOME) runningChecking += amount; else runningChecking -= amount; }
+           // Fix: ensure correct checking balance update for transfers/recurring
            if (r.toAccountId && checkingAccountIds.includes(r.toAccountId)) runningChecking += amount;
            r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
         }
@@ -285,7 +287,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
               point[`check_${s.id}`] = scenarioCheckingBalances[s.id];
           }
       });
-      
       points.push(point);
     }
     return points;
@@ -300,10 +301,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     if (!chatInput.trim() || isChatLoading) return;
     const userMsg = chatInput.trim();
     setChatInput('');
-    
     const newMessages: ChatMessage[] = [...persistentChatMessages, { role: 'user', text: userMsg }];
     if (onUpdateChatMessages) onUpdateChatMessages(newMessages);
-    
     setIsChatLoading(true);
     try {
       if (!chatSessionRef?.current) {
@@ -413,18 +412,15 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                         formatter={(v: number, name: string) => {
                             if (name === 'balance') return [formatCurrency(v, displayCurrency), 'Baseline Total Net'];
                             if (name === 'checkingBalance') return [formatCurrency(v, displayCurrency), 'Checking Balance (עו״ש)'];
-                            
                             const [type, scenarioId] = name.split('_');
                             const sName = scenarios.find(s => s.id === scenarioId)?.name || 'Unknown';
                             const typeLabel = type === 'net' ? 'Total Net' : 'Checking (עו״ש)';
-                            
                             return [formatCurrency(v, displayCurrency), `${sName}: ${typeLabel}`];
                         }} 
                       />
                       <Legend verticalAlign="top" height={50} wrapperStyle={{ paddingBottom: '20px' }}/>
                       <Area type="monotone" dataKey="balance" name="Baseline Total Net" stroke="#0ea5e9" strokeWidth={4} fillOpacity={0.05} fill="#0ea5e9" />
                       <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="3 3" />
-                      
                       {scenarios.map(s => s.isActive && (
                           <React.Fragment key={s.id}>
                               <Line type="monotone" dataKey={`net_${s.id}`} name={`${s.name}: Total Net`} stroke={s.color} strokeWidth={3} strokeDasharray="5 5" dot={false} />
@@ -499,10 +495,16 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                 <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2"><Repeat size={20} className="text-brand-500"/> Future Payment Burden (Strict Installments)</h3>
                 <div className="h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={installmentsSummary.roadmap} margin={{ top: 25, right: 30, left: 0, bottom: 0 }}>
+                        <BarChart data={installmentsSummary.roadmap} margin={{ top: 30, right: 30, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis dataKey="name" tick={{fontSize: 12, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} />
-                            <YAxis tick={{fontSize: 11, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(val) => val >= 1000 ? `${val/1000}k` : val} />
+                            <YAxis 
+                                tick={{fontSize: 11, fill: '#94a3b8'}} 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tickFormatter={(val) => val >= 1000 ? `${val/1000}k` : val} 
+                                domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.15)]} 
+                            />
                             <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
                                 formatter={(val: number, name: string) => [formatCurrency(val, displayCurrency), name]} 
                             />
@@ -514,7 +516,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                 <LabelList 
                                     dataKey="total" 
                                     position="top" 
-                                    offset={10}
+                                    offset={5}
                                     formatter={(val: number) => val >= 1000 ? `${(val/1000).toFixed(1)}k` : val.toFixed(0)}
                                     style={{ fontSize: '11px', fontWeight: '900', fill: '#475569' }}
                                 />

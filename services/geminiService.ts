@@ -1,10 +1,7 @@
 
-import { GoogleGenAI, Chat } from "@google/genai";
+import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
 
-/**
- * Creates a fresh Gemini instance to avoid potential state issues or API Key race conditions.
- */
 const getFreshAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const categorizeTransaction = async (payee: string, amount: number, existingCategories: string[] = []): Promise<string> => {
@@ -24,7 +21,6 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
     });
     return response.text?.trim() || "כללי";
   } catch (error) {
-    console.error("AI Categorization failed", error);
     return "כללי"; 
   }
 };
@@ -36,17 +32,7 @@ export const generateFinancialInsight = async (
   const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
   const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
 
-  const prompt = `
-    Analyze this financial data and provide 2-3 tailored insights or tips in Hebrew.
-    
-    Recent Transactions:
-    ${recentTxsSummary}
-    
-    Future Projection Snapshots:
-    ${forecastSummary}
-    
-    IMPORTANT: Be concise. Focus on risks or saving opportunities. Respond exclusively in Hebrew Markdown.
-  `;
+  const prompt = `Analyze this financial data and provide 2-3 tailored insights or tips in Hebrew.\nRecent Transactions:\n${recentTxsSummary}\nFuture Projection Snapshots:\n${forecastSummary}`;
 
   try {
     const ai = getFreshAi();
@@ -59,8 +45,30 @@ export const generateFinancialInsight = async (
     });
     return response.text || "שגיאה בייצור תובנות.";
   } catch (error) {
-    console.error("AI Insight failed", error);
-    return "שגיאה בייצור תובנות. נסה שנית מאוחר יותר.";
+    return "שגיאה בייצור תובנות.";
+  }
+};
+
+export const analyzeAnomalies = async (transactions: Transaction[]): Promise<string[]> => {
+  try {
+    const recent = transactions.slice(0, 100).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
+    const ai = getFreshAi();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Find 2-3 financial anomalies in these transactions (price increases, unusually high spend compared to category average). 
+      Output as a JSON array of Hebrew strings. Be very concise.
+      Transactions:\n${recent}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+    return JSON.parse(response.text || "[]");
+  } catch (e) {
+    return [];
   }
 };
 
@@ -70,30 +78,11 @@ export const createFinancialChatSession = (
   accounts: Account[]
 ): Chat => {
   const ai = getFreshAi();
-  
-  const accountSummary = accounts.map(a => `- ${a.name} (${a.type}${a.owner ? `, Owner: ${a.owner}` : ''}): ${a.currency} ${a.initialBalance}`).join('\n');
+  const accountSummary = accounts.map(a => `- ${a.name} (${a.type}): ${a.currency} ${a.initialBalance}`).join('\n');
   const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount} (${r.frequency})`).join('\n');
   const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
 
-  const systemInstruction = `You are a helpful personal finance chatbot for an app called FinanceFlow. 
-  Respond in Hebrew. 
-  
-  Context:
-  ACCOUNTS (Including Owners where available):
-  ${accountSummary}
-  
-  RECURRING BILLS:
-  ${recurringSummary}
-  
-  LAST 50 TRANSACTIONS:
-  ${recentTx}
-  
-  Instructions:
-  - Help user understand their spending and balances.
-  - If asked about specific owners (e.g., "how much does [Owner] have?"), use the Owner field in the ACCOUNTS context.
-  - If asked about "עו"ש" refer to checking accounts.
-  - Keep answers friendly and accurate.
-  `;
+  const systemInstruction = `You are a helpful personal finance chatbot for an app called FinanceFlow. Respond in Hebrew.\nContext:\nACCOUNTS:\n${accountSummary}\nRECURRING:\n${recurringSummary}\nLAST 50 TX:\n${recentTx}`;
 
   return ai.chats.create({
     model: 'gemini-3-flash-preview',

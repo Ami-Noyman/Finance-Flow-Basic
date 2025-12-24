@@ -14,9 +14,20 @@
               brand: {
                 50: '#f0f9ff',
                 100: '#e0f2fe',
+                400: '#38bdf8',
                 500: '#0ea5e9',
                 600: '#0284c7',
+                700: '#0369a1',
                 900: '#0c4a6e',
+              }
+            },
+            animation: {
+              'marquee': 'marquee 25s linear infinite',
+            },
+            keyframes: {
+              marquee: {
+                '0%': { transform: 'translateX(0%)' },
+                '100%': { transform: 'translateX(-50%)' },
               }
             }
           }
@@ -26,11 +37,22 @@
     <style>
       body { font-family: system-ui, -apple-system, sans-serif; margin: 0; }
       #root { height: 100vh; }
-      /* Custom scrollbar for better aesthetics */
       .custom-scrollbar::-webkit-scrollbar { width: 6px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
       .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+      
+      @keyframes slide-left {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+      }
+      .animate-slide-left { animation: slide-left 0.3s ease-out; }
+      
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
     </style>
   <script type="importmap">
 {

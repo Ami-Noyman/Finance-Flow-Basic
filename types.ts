@@ -32,7 +32,7 @@ export interface Account {
   id: string;
   name: string;
   owner?: string;
-  type: 'checking' | 'savings' | 'credit' | 'investment' | 'cash' | 'pension';
+  type: 'checking' | 'savings' | 'credit' | 'investment' | 'cash' | 'pension' | 'loan' | 'mortgage';
   subType?: string;
   currency: string;
   color: string;
@@ -43,6 +43,19 @@ export interface Account {
   lastPaymentDate?: string;
   investmentTrack?: string;
   estimatedPension?: number;
+  interestRate?: number; 
+  termMonths?: number;   
+}
+
+export interface FinancialGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+  color: string;
+  accountId?: string;
+  isActive: boolean;
 }
 
 export interface Transaction {
@@ -102,4 +115,5 @@ export interface AppState {
   categories: string[];
   categoryBudgets: SmartCategoryBudget[];
   valuations: Valuation[];
+  goals: FinancialGoal[];
 }

@@ -1,82 +1,89 @@
 
 import { initSupabase } from './supabaseClient';
-import { Transaction, RecurringTransaction, Account, SmartCategoryBudget, Valuation, TransactionType } from '../types';
+import { Transaction, RecurringTransaction, Account, SmartCategoryBudget, Valuation, TransactionType, FinancialGoal } from '../types';
 
-/**
- * Robust utility to force any object into a readable string.
- * Prevents the dreaded "[object Object]" in UI alerts.
- */
 const stringifyAny = (obj: any): string => {
     if (!obj) return "No error details provided.";
     if (typeof obj === 'string') return obj;
     if (obj instanceof Error) return `${obj.name}: ${obj.message}`;
-    
     try {
         const parts = [];
-        // Handle PostgREST/Supabase error format
         if (obj.code) parts.push(`Code: ${obj.code}`);
         if (obj.message) parts.push(`Msg: ${obj.message}`);
         if (obj.details) parts.push(`Detail: ${obj.details}`);
         if (obj.hint) parts.push(`Hint: ${obj.hint}`);
-        
-        // Handle nested error objects (some Supabase errors wrap the actual error)
         if (obj.error && typeof obj.error === 'object') {
             const nested = obj.error;
             if (nested.message) parts.push(`Nested Msg: ${nested.message}`);
             if (nested.code) parts.push(`Nested Code: ${nested.code}`);
         }
-
         if (parts.length > 0) return Array.from(new Set(parts)).join(' | ');
-        
-        // Fallback to JSON if it's a simple object with no known properties
         return JSON.stringify(obj, null, 2);
     } catch (e) {
         return "Unserializable error object: " + String(obj);
     }
 };
 
-/**
- * Helper to get Supabase client and current User ID.
- */
 const getContext = async () => {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Supabase client failed to initialize. Please re-configure your URL and Key in the Config tab.");
-    
+    if (!supabase) throw new Error("Supabase client failed to initialize.");
     try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
-
         const userId = session?.user?.id;
-        if (!userId) throw new Error("User session not found. Authentication required.");
-        
+        if (!userId) throw new Error("User session not found.");
         return { supabase, userId };
     } catch (e: any) {
-        if (e.message?.includes('fetch')) {
-            throw new Error("NetworkError: Connectivity to Supabase failed. Check URL/Key or Internet.");
-        }
         throw e;
     }
 };
 
-/**
- * Executes a Supabase query and handles potential errors like missing tables.
- */
 async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, mapper: (row: any) => T, tableName: string): Promise<T[]> {
     try {
-        const { data, error } = await query;
-        if (error) {
-            if (error.code === '42P01') {
-                console.warn(`Table '${tableName}' is missing. Please run the SQL script in Settings > Data.`);
+        const result = await query;
+        if (result.error) {
+            const error = result.error;
+            // 42P01: undefined_table (Postgres)
+            // PGRST205: Could not find the table in the schema cache (PostgREST/Supabase)
+            if (error.code === '42P01' || error.code === 'PGRST205') {
                 return []; 
             }
             throw error;
         }
-        return (data || []).map(mapper);
+        return (result.data || []).map(mapper);
     } catch (e: any) {
-        console.error(`Error fetching from ${tableName}:`, stringifyAny(e));
+        const errStr = stringifyAny(e);
+        const isTableMissing = errStr.includes('42P01') || errStr.includes('PGRST205');
+        const isNetworkError = errStr.includes('NetworkError') || errStr.includes('Failed to fetch') || errStr.includes('TypeError');
+        
+        if (!isTableMissing && !isNetworkError) {
+            console.error(`Error fetching from ${tableName}:`, errStr);
+        }
         return [];
     }
 }
+
+// --- Diagnostic Helpers ---
+export const checkTableHealth = async (): Promise<Record<string, boolean>> => {
+    const tables = ['accounts', 'transactions', 'recurring', 'category_budgets', 'valuations', 'goals', 'categories', 'account_sub_types'];
+    const health: Record<string, boolean> = {};
+    const supabase = initSupabase();
+    if (!supabase) return {};
+
+    try {
+        await Promise.all(tables.map(async (table) => {
+            const { error } = await supabase.from(table).select('id').limit(1);
+            // If we get a specific "table not found" error, it's false. 
+            // If it's a network error, we can't be sure, but usually we mark as true/unknown to avoid scaring user
+            const isMissing = error && (error.code === '42P01' || error.code === 'PGRST205');
+            health[table] = !isMissing;
+        }));
+    } catch (e) {
+        // Global network failure
+        return {};
+    }
+    return health;
+};
 
 // --- Mappers ---
 
@@ -94,6 +101,8 @@ const mapAccount = (row: any): Account => ({
     payFromAccountId: row.pay_from_account_id,
     investmentTrack: row.investment_track,
     estimatedPension: row.estimated_pension ? Number(row.estimated_pension) : undefined,
+    interestRate: row.interest_rate ? Number(row.interest_rate) : undefined,
+    termMonths: row.term_months ? Number(row.term_months) : undefined,
 });
 
 const accountToDb = (a: Account, userId: string) => ({
@@ -109,9 +118,10 @@ const accountToDb = (a: Account, userId: string) => ({
     credit_limit: a.creditLimit,
     payment_day: a.paymentDay,
     pay_from_account_id: a.payFromAccountId,
-    // Fix: Using a.investmentTrack instead of a.investment_track to match the Account interface.
     investment_track: a.investmentTrack,
     estimated_pension: a.estimatedPension,
+    interest_rate: a.interestRate,
+    term_months: a.termMonths,
 });
 
 const mapTransaction = (row: any): Transaction => ({
@@ -130,7 +140,6 @@ const mapTransaction = (row: any): Transaction => ({
 });
 
 const transactionToDb = (t: Transaction, userId: string) => {
-    // Robustly handle missing payee or description from input
     const safePayee = t.payee || (t as any).description || 'Unknown Payee';
     return {
         id: t.id,
@@ -138,7 +147,7 @@ const transactionToDb = (t: Transaction, userId: string) => {
         date: t.date,
         amount: t.amount,
         payee: safePayee,
-        description: safePayee, // Support for legacy description column
+        description: safePayee,
         notes: t.notes || '',
         category: t.category || 'כללי',
         type: t.type,
@@ -171,7 +180,6 @@ const mapRecurring = (row: any): RecurringTransaction => ({
 });
 
 const recurringToDb = (r: RecurringTransaction, userId: string) => {
-    // Robustly handle missing payee or description from input
     const safePayee = r.payee || (r as any).description || 'Unknown Payee';
     return {
         id: r.id,
@@ -179,7 +187,7 @@ const recurringToDb = (r: RecurringTransaction, userId: string) => {
         amount: r.amount,
         amount_type: r.amountType || 'fixed',
         payee: safePayee,
-        description: safePayee, // Support for legacy description column
+        description: safePayee,
         notes: r.notes || '',
         category: r.category || 'כללי',
         type: r.type,
@@ -228,6 +236,29 @@ const valuationToDb = (v: Valuation, userId: string) => ({
     value: v.value,
 });
 
+const mapGoal = (row: any): FinancialGoal => ({
+  id: row.id,
+  name: row.name,
+  targetAmount: Number(row.target_amount),
+  currentAmount: Number(row.current_amount),
+  deadline: row.deadline,
+  color: row.color,
+  accountId: row.account_id,
+  isActive: row.is_active,
+});
+
+const goalToDb = (g: FinancialGoal, userId: string) => ({
+  id: g.id,
+  user_id: userId,
+  name: g.name,
+  target_amount: g.targetAmount,
+  current_amount: g.currentAmount,
+  deadline: g.deadline || null,
+  color: g.color,
+  account_id: g.accountId || null,
+  is_active: g.isActive,
+});
+
 // --- Exports ---
 
 export const fetchAccounts = async (uid?: string): Promise<Account[]> => {
@@ -252,28 +283,14 @@ export const batchCreateAccounts = async (accs: Account[]) => {
     const { supabase, userId } = await getContext();
     const payloads = accs.map(a => accountToDb(a, userId));
     const { error } = await supabase.from('accounts').upsert(payloads);
-    if (error) {
-        const errText = stringifyAny(error);
-        console.error("Cloud Error (Accounts Table):", errText);
-        throw new Error(`Accounts table rejected data: ${errText}`);
-    }
+    if (error) throw new Error(stringifyAny(error));
 };
 
 export const updateAccountsLinks = async (accs: Account[]) => {
     if (!accs.length) return;
     const { supabase, userId } = await getContext();
-    const linkedAccs = accs.filter(a => a.payFromAccountId);
-    if (!linkedAccs.length) return;
-
-    for (const acc of linkedAccs) {
-        const { error } = await supabase
-            .from('accounts')
-            .update({ pay_from_account_id: acc.payFromAccountId })
-            .eq('id', acc.id)
-            .eq('user_id', userId);
-        if (error) {
-            console.warn(`Link update failed for ${acc.name}: ${error.message}`);
-        }
+    for (const acc of accs.filter(a => a.payFromAccountId)) {
+        await supabase.from('accounts').update({ pay_from_account_id: acc.payFromAccountId }).eq('id', acc.id).eq('user_id', userId);
     }
 };
 
@@ -305,11 +322,7 @@ export const batchCreateTransactions = async (txs: Transaction[]) => {
     const { supabase, userId } = await getContext();
     const payloads = txs.map(t => transactionToDb(t, userId));
     const { error } = await supabase.from('transactions').upsert(payloads);
-    if (error) {
-        const errText = stringifyAny(error);
-        console.error("Cloud Error (Transactions Table):", errText);
-        throw new Error(`Transactions table rejected data: ${errText}`);
-    }
+    if (error) throw new Error(stringifyAny(error));
 };
 
 export const deleteTransaction = async (id: string) => {
@@ -340,11 +353,7 @@ export const batchCreateRecurring = async (recs: RecurringTransaction[]) => {
     const { supabase, userId } = await getContext();
     const payloads = recs.map(r => recurringToDb(r, userId));
     const { error } = await supabase.from('recurring').upsert(payloads);
-    if (error) {
-        const errText = stringifyAny(error);
-        console.error("Cloud Error (Recurring Table):", errText);
-        throw new Error(`Recurring table rejected data: ${errText}`);
-    }
+    if (error) throw new Error(stringifyAny(error));
 };
 
 export const deleteRecurring = async (id: string) => {
@@ -406,11 +415,7 @@ export const batchCreateCategories = async (names: string[]) => {
     const { supabase, userId } = await getContext();
     const payloads = names.map(name => ({ name, user_id: userId }));
     const { error } = await supabase.from('categories').insert(payloads);
-    if (error && error.code !== '23505') {
-        const errText = stringifyAny(error);
-        console.error("Cloud Error (Categories Table):", errText);
-        throw new Error(`Categories table rejected data: ${errText}`);
-    }
+    if (error && error.code !== '23505') throw new Error(stringifyAny(error));
 };
 
 export const fetchAccountSubTypes = async (uid?: string): Promise<string[]> => {
@@ -435,11 +440,7 @@ export const batchCreateAccountSubTypes = async (names: string[]) => {
     const { supabase, userId } = await getContext();
     const payloads = names.map(name => ({ name, user_id: userId }));
     const { error } = await supabase.from('account_sub_types').insert(payloads);
-    if (error && error.code !== '23505') {
-        const errText = stringifyAny(error);
-        console.error("Cloud Error (Sub-types Table):", errText);
-        throw new Error(`Account types table rejected data: ${errText}`);
-    }
+    if (error && error.code !== '23505') throw new Error(stringifyAny(error));
 };
 
 export const fetchValuations = async (uid?: string): Promise<Valuation[]> => {
@@ -473,23 +474,46 @@ export const deleteValuation = async (id: string) => {
     if (error) throw new Error(stringifyAny(error));
 };
 
+export const fetchGoals = async (uid?: string): Promise<FinancialGoal[]> => {
+    try {
+        const { supabase, userId } = await getContext();
+        return safeFetch<FinancialGoal>(
+            supabase.from('goals').select('*').eq('user_id', uid || userId),
+            mapGoal,
+            'goals'
+        );
+    } catch (e) { return []; }
+};
+
+export const saveGoal = async (g: FinancialGoal) => {
+    const { supabase, userId } = await getContext();
+    const { error } = await supabase.from('goals').upsert(goalToDb(g, userId));
+    if (error) throw new Error(stringifyAny(error));
+};
+
+export const batchCreateGoals = async (goals: FinancialGoal[]) => {
+    if (!goals.length) return;
+    const { supabase, userId } = await getContext();
+    const payloads = goals.map(g => goalToDb(g, userId));
+    const { error } = await supabase.from('goals').upsert(payloads);
+    if (error) throw new Error(stringifyAny(error));
+};
+
+export const deleteGoal = async (id: string) => {
+    const { supabase, userId } = await getContext();
+    const { error } = await supabase.from('goals').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw new Error(stringifyAny(error));
+};
+
 export const clearAllUserData = async () => {
     const { supabase, userId } = await getContext();
-    const tableOrder = [
-        'transactions',
-        'recurring',
-        'valuations',
-        'category_budgets',
-        'accounts',
-        'categories',
-        'account_sub_types'
-    ];
-    
+    const tableOrder = ['transactions', 'recurring', 'valuations', 'category_budgets', 'goals', 'accounts', 'categories', 'account_sub_types'];
     for (const table of tableOrder) {
-        const { error } = await supabase.from(table).delete().eq('user_id', userId);
-        if (error && error.code !== '42P01') {
-            console.error(`Clear error for ${table}:`, error.message);
-            throw new Error(`Failed to clear existing data in ${table}: ${error.message}`);
-        }
+        try {
+            const { error } = await supabase.from(table).delete().eq('user_id', userId);
+            if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
+                console.warn(`Purge failed for table ${table}:`, error.message);
+            }
+        } catch (e) {}
     }
 };

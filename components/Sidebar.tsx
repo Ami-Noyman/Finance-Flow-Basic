@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, List, Repeat, TrendingUp, PieChart, Settings as SettingsIcon, PiggyBank, ShieldCheck, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, List, Repeat, TrendingUp, PieChart, Settings as SettingsIcon, PiggyBank, ShieldCheck, BrainCircuit, CreditCard, Target } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -12,9 +12,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: List },
     { id: 'recurring', label: 'Recurring', icon: Repeat },
+    { id: 'goals', label: 'Goals', icon: Target },
     { id: 'forecast', label: 'Forecast', icon: TrendingUp },
     { id: 'ai', label: 'AI Advisor', icon: BrainCircuit },
     { id: 'savings', label: 'Savings', icon: PiggyBank },
+    { id: 'liabilities', label: 'Liabilities', icon: CreditCard },
     { id: 'pension', label: 'Pension', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];

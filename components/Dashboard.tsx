@@ -1,35 +1,44 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  Cell, Legend, ReferenceLine, LabelList, AreaChart, Area, PieChart, Pie
+  Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
-import { Transaction, TransactionType, Account, RecurringTransaction, Frequency, AmountType, SmartCategoryBudget } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, CalendarDays, Layers, PlusCircle, ArrowUpRight, ArrowDownRight, Zap, Target, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal } from '../types';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, getYear, subMonths } from 'date-fns';
-import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget, sortAccounts } from '../utils/finance';
+import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { calculateNextDate, getSmartAmount, sortAccounts } from '../utils/finance';
+import { analyzeAnomalies } from '../services/geminiService';
 
 interface DashboardProps {
   transactions: Transaction[];
   recurring: RecurringTransaction[];
   categoryBudgets: SmartCategoryBudget[];
   accounts: Account[];
+  goals: FinancialGoal[];
   selectedAccountId: string | null;
 }
 
-const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-
-export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, categoryBudgets, accounts, selectedAccountId }) => {
-  // Starts with all account details showing by default
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, categoryBudgets, accounts, goals, selectedAccountId }) => {
   const [showIndividualLines, setShowIndividualLines] = useState(true);
-  const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
+  const [anomalies, setAnomalies] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  useEffect(() => {
+    if (transactions.length > 0) {
+      setIsAnalyzing(true);
+      analyzeAnomalies(transactions).then(res => {
+        setAnomalies(res);
+        setIsAnalyzing(false);
+      });
+    }
+  }, [transactions.length]);
 
   const displayCurrency = selectedAccountId 
      ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
      : (accounts[0]?.currency || 'ILS');
 
-  // --- Monthly Performance Stats ---
   const stats = useMemo(() => {
     const now = new Date();
     const currentMonthStart = startOfMonth(now);
@@ -56,30 +65,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       }
     });
 
+    const incomeChange = lastIncome ? ((currentIncome - lastIncome) / lastIncome) * 100 : 0;
+    const expenseChange = lastExpense ? ((currentExpense - lastExpense) / lastExpense) * 100 : 0;
+
     return {
       currentIncome,
       currentExpense,
       netCashFlow: currentIncome - currentExpense,
-      incomeChange: lastIncome ? ((currentIncome - lastIncome) / lastIncome) * 100 : 0,
-      expenseChange: lastExpense ? ((currentExpense - lastExpense) / lastExpense) * 100 : 0
+      incomeChange,
+      expenseChange
     };
-  }, [transactions, selectedAccountId]);
-
-  // --- Category Spend for Budgets ---
-  const categorySpending = useMemo(() => {
-    const now = new Date();
-    const start = startOfMonth(now);
-    const end = endOfMonth(now);
-    const totals: Record<string, number> = {};
-    
-    transactions.forEach(t => {
-      const d = parseISO(t.date);
-      const isTargetAcc = !selectedAccountId || t.accountId === selectedAccountId || t.toAccountId === selectedAccountId;
-      if (isTargetAcc && t.type === TransactionType.EXPENSE && isWithinInterval(d, { start, end })) {
-        totals[t.category] = (totals[t.category] || 0) + t.amount;
-      }
-    });
-    return totals;
   }, [transactions, selectedAccountId]);
 
   const balances = useMemo(() => {
@@ -110,8 +105,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   const balanceHistory = useMemo(() => {
     const isLiquid = (a: Account) => a.type === 'checking' || a.type === 'credit' || a.type === 'cash';
-    
-    // Default to all liquid accounts of the primary currency
     const targetAccountIds = selectedAccountId
         ? [selectedAccountId]
         : accounts.filter(a => a.currency === displayCurrency && isLiquid(a)).map(a => a.id);
@@ -133,7 +126,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     const dataPoints: any[] = [];
     const getSum = (bals: Record<string, number>) => Object.values(bals).reduce((s, v) => s + v, 0);
 
-    // Past 30 days
     const tempBals = { ...currentBalances };
     dataPoints.push({ date: format(today, 'yyyy-MM-dd'), displayDate: 'Today', balance: getSum(tempBals), type: 'actual', ...tempBals });
     
@@ -150,13 +142,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         dataPoints.unshift({ date: format(subDays(d, 1), 'yyyy-MM-dd'), displayDate: format(d, 'MMM d'), balance: getSum(tempBals), type: 'actual', ...tempBals });
     }
 
-    // Future 60 days
     const forecastBals = { ...currentBalances };
     const activeRecs = recurring.filter(r => r.isActive).map(r => ({ ...r, next: parseISO(r.nextDueDate) }));
     for (let i = 1; i <= 60; i++) {
         const d = addDays(today, i);
         const dStr = format(d, 'yyyy-MM-dd');
-        
         transactions.filter(t => t.date === dStr).forEach(t => {
           if (targetAccountIds.includes(t.accountId)) {
               if (t.type === TransactionType.INCOME) forecastBals[t.accountId] += t.amount;
@@ -178,7 +168,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         });
         dataPoints.push({ date: dStr, displayDate: format(d, 'MMM d'), forecast: getSum(forecastBals), type: 'forecast', ...forecastBals });
     }
-
     return dataPoints;
   }, [transactions, recurring, accounts, selectedAccountId, displayCurrency]);
 
@@ -186,13 +175,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
+      
+      {/* Flash Insights Marquee */}
+      {(anomalies.length > 0 || isAnalyzing) && (
+        <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
+           <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
+             <Sparkles size={16} className="text-brand-400 animate-pulse" />
+             <span className="text-[10px] font-black uppercase tracking-widest">Flash Insights</span>
+           </div>
+           <div className="flex-1 overflow-hidden">
+              {isAnalyzing ? (
+                <span className="text-xs font-medium animate-pulse">המערכת מנתחת תנועות חריגות...</span>
+              ) : (
+                <div className="flex gap-8 animate-marquee whitespace-nowrap">
+                  {anomalies.map((a, i) => (
+                    <span key={i} className="text-xs font-bold flex items-center gap-2">
+                       <AlertCircle size={14} className="text-orange-400"/> {a}
+                    </span>
+                  ))}
+                  {anomalies.map((a, i) => (
+                    <span key={`dup-${i}`} className="text-xs font-bold flex items-center gap-2">
+                       <AlertCircle size={14} className="text-orange-400"/> {a}
+                    </span>
+                  ))}
+                </div>
+              )}
+           </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><TrendingUp size={24}/></div>
             <div className={`flex items-center gap-1 text-xs font-black ${stats.incomeChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {stats.incomeChange >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
               {Math.abs(stats.incomeChange).toFixed(1)}%
             </div>
           </div>
@@ -204,7 +221,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><TrendingDown size={24}/></div>
             <div className={`flex items-center gap-1 text-xs font-black ${stats.expenseChange <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {stats.expenseChange > 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
               {Math.abs(stats.expenseChange).toFixed(1)}%
             </div>
           </div>
@@ -222,141 +238,93 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Trend Chart */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-8">
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Activity size={22} className="text-brand-500"/>Liquidity Trend</h3>
-              {!selectedAccountId && (
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1"><Info size={10}/> Total Liquidity Across All Relevant Accounts</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowIndividualLines(!showIndividualLines)} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border transition-all ${showIndividualLines ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
-                {showIndividualLines ? 'Hide Account Details' : 'Show Account Details'}
-              </button>
-            </div>
-          </div>
-          <div className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={balanceHistory}>
-                <defs>
-                  <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="displayDate" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} interval={7} />
-                <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
-                <Tooltip 
-                  contentStyle={tooltipStyle} 
-                  formatter={(v: number, name: string) => [formatCurrency(v, displayCurrency), name]} 
-                />
-                <ReferenceLine x="Today" stroke="#94a3b8" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" />
-                <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" />
-                {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash')).map(acc => (
-                  <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Spend Limits Summary */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Target size={20} className="text-orange-500"/>Spend Limits</h3>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{format(new Date(), 'MMMM')}</span>
-          </div>
-          
-          <div className="space-y-5 flex-1 overflow-auto pr-2 custom-scrollbar">
-            {categoryBudgets.length > 0 ? (
-              categoryBudgets.map(budget => {
-                const spent = categorySpending[budget.categoryName] || 0;
-                const effectiveLimit = getEffectiveCategoryBudget(budget, transactions);
-                const percent = Math.min(100, (spent / effectiveLimit) * 100);
-                const isOver = spent > effectiveLimit;
-
-                return (
-                  <div key={budget.id} className="space-y-1.5">
-                    <div className="flex justify-between items-end px-1">
-                      <div className="text-xs font-black text-slate-800 truncate max-w-[120px]">{budget.categoryName}</div>
-                      <div className="text-right">
-                        <span className={`text-xs font-black ${isOver ? 'text-red-600' : 'text-slate-600'}`}>
-                          {formatCurrency(spent, displayCurrency)}
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-bold ml-1">/ {Math.round(effectiveLimit)}</span>
-                      </div>
-                    </div>
-                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-50">
-                      <div 
-                        className={`h-full transition-all duration-700 rounded-full ${isOver ? 'bg-red-500' : (percent > 85 ? 'bg-orange-400' : 'bg-brand-500')}`} 
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center py-10 opacity-40">
-                <AlertCircle size={32} className="mb-2" />
-                <p className="text-xs font-black uppercase tracking-widest">No Limits Set</p>
-                <p className="text-[10px] font-medium mt-1">Configure in Recurring tab</p>
-              </div>
+      {/* Liquidity Trend */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-8">
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Activity size={22} className="text-brand-500"/>Liquidity Trend</h3>
+            {!selectedAccountId && (
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1"><Info size={10}/> Consolidated Liquidity View</p>
             )}
           </div>
-
-          <div className="mt-6 pt-6 border-t border-slate-50">
-             <div className="p-4 bg-orange-50 rounded-2xl flex items-center gap-4 border border-orange-100">
-                <div className="p-2 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/20"><CheckCircle2 size={20}/></div>
-                <div>
-                  <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Budget Status</p>
-                  <p className="text-xs font-bold text-slate-600">
-                    {categoryBudgets.every(b => (categorySpending[b.categoryName] || 0) <= getEffectiveCategoryBudget(b, transactions))
-                      ? "All categories are on track!"
-                      : "Some categories exceed limits."}
-                  </p>
-                </div>
-             </div>
-          </div>
+          <button onClick={() => setShowIndividualLines(!showIndividualLines)} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border transition-all ${showIndividualLines ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+            {showIndividualLines ? 'Hide Account Details' : 'Show Account Details'}
+          </button>
+        </div>
+        <div className="h-[350px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={balanceHistory}>
+              <defs>
+                <linearGradient id="colorNet" x1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="displayDate" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} interval={7} />
+              <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
+              <Tooltip 
+                contentStyle={tooltipStyle} 
+                formatter={(v: number, name: string) => [formatCurrency(v, displayCurrency), name]} 
+              />
+              <ReferenceLine x="Today" stroke="#94a3b8" strokeDasharray="3 3" />
+              <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" />
+              <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" />
+              {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash')).map(acc => (
+                <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
-      
-      {/* Individual Balances Bar Chart */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-10">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Snapshot of Liquid Assets</p>
+
+      {/* Bottom Grid: Account Balances (Wider) & Savings Goals */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+              <h3 className="text-xl font-bold text-gray-800 mb-8 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>
+              <div className="h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 60 }}>
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} width={100} />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#f8fafc' }} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} />
+                    <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={28}>
+                      {accountBarData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                      <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '11px', fontWeight: 'bold', fill: '#64748b' }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} width={100} />
-                <Tooltip 
-                    contentStyle={tooltipStyle} 
-                    cursor={{ fill: '#f8fafc' }}
-                    formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']}
-                />
-                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={32}>
-                  {accountBarData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                  <LabelList 
-                    dataKey="balance" 
-                    position="right" 
-                    formatter={(v: number) => formatCurrency(v, displayCurrency)}
-                    style={{ fontSize: '11px', fontWeight: 'bold', fill: '#64748b' }}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+
+          <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-8">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Target size={20} className="text-orange-500"/>Active Savings Goals</h3>
+              </div>
+              <div className="space-y-6 overflow-y-auto max-h-[350px] pr-2 custom-scrollbar">
+                  {goals.filter(g => g.isActive).length > 0 ? goals.filter(g => g.isActive).map(goal => {
+                    const percent = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100);
+                    return (
+                      <div key={goal.id} className="space-y-2">
+                        <div className="flex justify-between items-end">
+                           <div>
+                             <p className="text-xs font-black text-slate-800">{goal.name}</p>
+                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{goal.deadline ? `Target: ${goal.deadline}` : 'Long-term'}</p>
+                           </div>
+                           <p className="text-[10px] font-black text-slate-700">{formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}</p>
+                        </div>
+                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                           <div className="h-full transition-all duration-1000 rounded-full" style={{ width: `${percent}%`, backgroundColor: goal.color }} />
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="flex flex-col items-center justify-center py-10 text-slate-300">
+                      <Target size={48} className="opacity-20 mb-2" />
+                      <p className="text-xs font-black uppercase tracking-widest">No Active Goals</p>
+                    </div>
+                  )}
+              </div>
           </div>
       </div>
     </div>
