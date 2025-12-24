@@ -2,9 +2,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
-import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe } from 'lucide-react';
 import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth } from '../services/storageService';
-import { initSupabase } from '../services/supabaseClient';
+import { initSupabase, getDebugInfo } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
 
 interface SettingsProps {
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS public.valuations (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. Financial Goals (The missing table)
+-- 6. Financial Goals
 CREATE TABLE IF NOT EXISTS public.goals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -182,6 +182,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'data' | 'db'>('accounts');
   const [tableHealth, setTableHealth] = useState<Record<string, boolean>>({});
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const debugInfo = useMemo(() => getDebugInfo(), [activeTab]);
   
   // Restore Modal State
   const [showRestoreModal, setShowRestoreModal] = useState(false);
@@ -395,6 +396,51 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {activeTab === 'db' && (
         <div className="space-y-6">
+            {/* Connection Diagnostics Section */}
+            <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-2xl space-y-6">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Globe size={28}/></div>
+                    <div>
+                        <h3 className="text-xl font-black">Production Diagnostics</h3>
+                        <p className="text-xs text-slate-400 font-medium">Verify your Vercel Environment connection</p>
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Config Source</p>
+                        <p className="text-sm font-black flex items-center gap-2">
+                           <div className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') ? 'bg-green-500' : 'bg-orange-500'}`} />
+                           {debugInfo.source}
+                        </p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">URL Detected</p>
+                        <p className="text-sm font-black flex items-center gap-2">
+                           {debugInfo.hasUrl ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
+                           {debugInfo.urlPreview}
+                        </p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Anon Key Detected</p>
+                        <p className="text-sm font-black flex items-center gap-2">
+                           {debugInfo.hasKey ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
+                           {debugInfo.hasKey ? 'PRESENT' : 'MISSING'}
+                        </p>
+                    </div>
+                </div>
+
+                {!debugInfo.hasUrl && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex gap-3 items-start">
+                        <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={18}/>
+                        <div className="text-xs space-y-2">
+                            <p className="font-bold text-red-200">Variables Missing on Vercel!</p>
+                            <p className="text-red-100/70">Go to <strong>Vercel Dashboard > Settings > Environment Variables</strong> and add <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code>. You must trigger a new deployment for these to work.</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
                 <div className="flex justify-between items-start">
                     <div>
@@ -529,3 +575,9 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 };
+
+const XCircle = ({ size, className }: { size?: number, className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+    </svg>
+);

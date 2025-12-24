@@ -37,6 +37,16 @@ export const isConfigured = () => {
     return !!(config.url && config.key);
 };
 
+export const getDebugInfo = () => {
+    const config = getSupabaseConfig();
+    return {
+        hasUrl: !!config.url,
+        hasKey: !!config.key,
+        urlPreview: config.url ? `${config.url.substring(0, 12)}...` : 'NONE',
+        source: isPreconfigured() ? 'Environment (Vercel)' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED')
+    };
+};
+
 let supabaseInstance: any = null;
 
 export const initSupabase = () => {
@@ -44,8 +54,13 @@ export const initSupabase = () => {
     const { url, key } = getSupabaseConfig();
     if (!url || !key) return null;
     
-    supabaseInstance = createClient(url, key);
-    return supabaseInstance;
+    try {
+        supabaseInstance = createClient(url, key);
+        return supabaseInstance;
+    } catch (e) {
+        console.error("Supabase Initialization Error:", e);
+        return null;
+    }
 };
 
 export const resetSupabase = () => {

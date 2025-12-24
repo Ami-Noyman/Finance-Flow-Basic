@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { initSupabase, saveSupabaseConfig, isConfigured, resetSupabase, isPreconfigured } from '../services/supabaseClient';
-import { Settings, LogIn, UserPlus, AlertCircle, CheckCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
+import { initSupabase, saveSupabaseConfig, isConfigured, resetSupabase, isPreconfigured, getDebugInfo } from '../services/supabaseClient';
+import { Settings, LogIn, UserPlus, AlertCircle, CheckCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft, AlertTriangle } from 'lucide-react';
 
 interface AuthProps {
     onConfigured: () => void;
@@ -13,6 +13,7 @@ const EMAILS_STORAGE_KEY = 'financeflow_remembered_emails';
 export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
     const configured = isConfigured();
     const preconfigured = isPreconfigured();
+    const debug = getDebugInfo();
     
     // If preconfigured (Vercel), we never start in 'config' mode.
     // Otherwise (AI Studio), if not configured, start in 'config' mode.
@@ -76,7 +77,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         e.preventDefault();
         setError(null); setSuccessMsg(null); setLoading(true);
         const supabase = initSupabase();
-        if (!supabase) { setError("Connection not configured."); setLoading(false); return; }
+        if (!supabase) { setError("Connection not configured properly. Check environment variables."); setLoading(false); return; }
         const cleanEmail = email.trim();
         if (!cleanEmail || !password) { setError("Email and password required."); setLoading(false); return; }
 
@@ -127,6 +128,17 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                 </div>
 
                 <div className="p-8">
+                    {/* PRODUCTION CONNECTION GUARD */}
+                    {(!debug.hasUrl || !debug.hasKey) && mode !== 'config' && (
+                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6 flex gap-3 items-start animate-pulse">
+                            <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20}/>
+                            <div className="text-xs">
+                                <p className="font-black text-amber-900 uppercase tracking-tight">Supabase Connection Missing</p>
+                                <p className="text-amber-800 mt-1">Environment variables (<code>SUPABASE_URL</code>) are not detected. Login will fail.</p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="text-center mb-8">
                         <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
                             {mode === 'config' ? <Settings size={32}/> : (mode === 'reset' ? <KeyRound size={32}/> : <Database size={32}/>)}
