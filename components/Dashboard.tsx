@@ -11,6 +11,7 @@ import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies } from '../services/geminiService';
 
+// Use sessionStorage so alerts reset when the session ends or user logs out
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
 
 interface DashboardProps {
@@ -27,9 +28,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
+  // Initialize dismissed alerts from sessionStorage for per-session persistence
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
     try {
-      const stored = localStorage.getItem(DISMISSED_ALERTS_KEY);
+      const stored = sessionStorage.getItem(DISMISSED_ALERTS_KEY);
       return stored ? JSON.parse(stored) : [];
     } catch (e) {
       return [];
@@ -48,6 +50,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   const balanceAlerts = useMemo(() => {
     const rawAlerts = calculateBalanceAlerts(accounts, transactions, recurring);
+    // Filter out alerts that the user has dismissed in this SPECIFIC session
     return rawAlerts.filter(alert => !dismissedAlerts.includes(`${alert.accountId}-${alert.date}`));
   }, [accounts, transactions, recurring, dismissedAlerts]);
 
@@ -55,7 +58,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     const alertId = `${accountId}-${date}`;
     const updated = [...dismissedAlerts, alertId];
     setDismissedAlerts(updated);
-    localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(updated));
+    sessionStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(updated));
   };
 
   const displayCurrency = selectedAccountId 
@@ -198,6 +201,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
+      
+      {/* Predictive Alerts Banner */}
       {balanceAlerts.length > 0 && (
         <div className="space-y-3">
           {balanceAlerts.map((alert) => (
@@ -234,6 +239,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
+      {/* Flash Insights Marquee */}
       {(anomalies.length > 0 || isAnalyzing) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
@@ -256,6 +262,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-4">
@@ -289,6 +296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
+      {/* Liquidity Trend */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-8">
           <div className="space-y-1">
@@ -328,6 +336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
+      {/* Bottom Grid: Account Balances & Savings Goals */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
               <h3 className="text-xl font-bold text-gray-800 mb-8 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>

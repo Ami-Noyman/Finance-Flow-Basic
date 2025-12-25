@@ -96,6 +96,10 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     const supabase = initSupabase();
     if(supabase) await supabase.auth.signOut();
+    
+    // Explicitly clear session-based alert dismissals on logout
+    sessionStorage.removeItem('financeflow_dismissed_alerts');
+    
     setSession(null);
   };
 
