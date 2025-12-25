@@ -2,8 +2,8 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
-import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe } from 'lucide-react';
-import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth } from '../services/storageService';
+import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity } from 'lucide-react';
+import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection } from '../services/storageService';
 import { initSupabase, getDebugInfo } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
 
@@ -24,7 +24,7 @@ interface SettingsProps {
 
 const IS_ASSET_CLASS = (type: string) => ['savings', 'pension', 'investment', 'loan', 'mortgage'].includes(type);
 
-const FULL_SCHEMA_SQL = `-- FinanceFlow Idempotent Schema Initialization
+const FULL_SCHEMA_SQL = `-- FinanceFlow Idempotent Schema Initialization & Patch Script
 -- Run this in your Supabase SQL Editor (https://app.supabase.com)
 
 -- 1. Accounts Table
@@ -47,6 +47,26 @@ CREATE TABLE IF NOT EXISTS public.accounts (
     term_months INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- SCHEMA PATCH: Add missing columns to 'accounts' if they don't exist
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='interest_rate') THEN
+        ALTER TABLE public.accounts ADD COLUMN interest_rate NUMERIC;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='term_months') THEN
+        ALTER TABLE public.accounts ADD COLUMN term_months INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='owner') THEN
+        ALTER TABLE public.accounts ADD COLUMN owner TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='investment_track') THEN
+        ALTER TABLE public.accounts ADD COLUMN investment_track TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounts' AND column_name='estimated_pension') THEN
+        ALTER TABLE public.accounts ADD COLUMN estimated_pension NUMERIC;
+    END IF;
+END $$;
 
 -- 2. Transactions Table
 CREATE TABLE IF NOT EXISTS public.transactions (
@@ -150,7 +170,7 @@ ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_sub_types ENABLE ROW LEVEL SECURITY;
 
--- Idempotent Policy Creation (Drop before Create)
+-- Idempotent Policy Creation
 DROP POLICY IF EXISTS "Users can manage their own accounts" ON public.accounts;
 CREATE POLICY "Users can manage their own accounts" ON public.accounts FOR ALL USING (auth.uid() = user_id);
 
@@ -182,6 +202,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'data' | 'db'>('accounts');
   const [tableHealth, setTableHealth] = useState<Record<string, boolean>>({});
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const debugInfo = useMemo(() => getDebugInfo(), [activeTab]);
   
   // Restore Modal State
@@ -221,6 +242,13 @@ export const Settings: React.FC<SettingsProps> = ({
     const health = await checkTableHealth();
     setTableHealth(health);
     setIsCheckingHealth(false);
+  };
+
+  const handleTestConnection = async () => {
+      setIsTestingConnection(true);
+      const res = await testConnection();
+      alert(res.message);
+      setIsTestingConnection(false);
   };
 
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
@@ -338,7 +366,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const copySql = () => {
     navigator.clipboard.writeText(FULL_SCHEMA_SQL);
-    alert("SQL Schema copied to clipboard!");
+    alert("SQL Patch copied to clipboard!");
   };
 
   return (
@@ -396,56 +424,50 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {activeTab === 'db' && (
         <div className="space-y-6">
-            {/* Connection Diagnostics Section */}
             <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-2xl space-y-6">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Globe size={28}/></div>
-                    <div>
-                        <h3 className="text-xl font-black">Production Diagnostics</h3>
-                        <p className="text-xs text-slate-400 font-medium">Verify your Vercel Environment connection</p>
+                <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Globe size={28}/></div>
+                        <div>
+                            <h3 className="text-xl font-black">Database Connection</h3>
+                            <p className="text-xs text-slate-400 font-medium">Manage your Supabase cloud link</p>
+                        </div>
                     </div>
+                    <button onClick={handleTestConnection} disabled={isTestingConnection} className="flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 rounded-2xl text-xs font-black uppercase transition-all shadow-lg active:scale-95">
+                        <Activity size={16} className={isTestingConnection ? 'animate-spin' : ''}/> {isTestingConnection ? 'Testing...' : 'Test Connection'}
+                    </button>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Config Source</p>
-                        <p className="text-sm font-black flex items-center gap-2">
-                           <div className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') ? 'bg-green-500' : 'bg-orange-500'}`} />
-                           {debugInfo.source}
-                        </p>
+                        <div className="text-sm font-black flex items-center gap-2">
+                           <span className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') ? 'bg-green-500' : 'bg-orange-500'}`}></span>
+                           <span>{debugInfo.source}</span>
+                        </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">URL Detected</p>
-                        <p className="text-sm font-black flex items-center gap-2">
+                        <div className="text-sm font-black flex items-center gap-2">
                            {debugInfo.hasUrl ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
-                           {debugInfo.urlPreview}
-                        </p>
+                           <span>{debugInfo.urlPreview}</span>
+                        </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Anon Key Detected</p>
-                        <p className="text-sm font-black flex items-center gap-2">
+                        <div className="text-sm font-black flex items-center gap-2">
                            {debugInfo.hasKey ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
-                           {debugInfo.hasKey ? 'PRESENT' : 'MISSING'}
-                        </p>
-                    </div>
-                </div>
-
-                {!debugInfo.hasUrl && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex gap-3 items-start">
-                        <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={18}/>
-                        <div className="text-xs space-y-2">
-                            <p className="font-bold text-red-200">Variables Missing on Vercel!</p>
-                            <p className="text-red-100/70">Go to <strong>Vercel Dashboard > Settings > Environment Variables</strong> and add <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code>. You must trigger a new deployment for these to work.</p>
+                           <span>{debugInfo.hasKey ? 'PRESENT' : 'MISSING'}</span>
                         </div>
                     </div>
-                )}
+                </div>
             </div>
 
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Database Health</h3>
-                        <p className="text-sm text-slate-500 mt-1 font-medium">Verify that your Supabase tables are correctly initialized.</p>
+                        <p className="text-sm text-slate-500 mt-1 font-medium">Verify table status and column availability.</p>
                     </div>
                     <button onClick={refreshHealth} disabled={isCheckingHealth} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all">
                         <RefreshCw size={14} className={isCheckingHealth ? 'animate-spin' : ''}/> {isCheckingHealth ? 'Checking...' : 'Refresh Health'}
@@ -458,7 +480,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             {exists ? <CheckCircle2 size={18} className="text-green-600"/> : <AlertCircle size={18} className="text-red-600"/>}
                             <div>
                                 <div className="text-xs font-black uppercase tracking-wider text-slate-700">{table}</div>
-                                <div className={`text-[10px] font-bold ${exists ? 'text-green-700' : 'text-red-700'}`}>{exists ? 'Online' : 'MISSING'}</div>
+                                <div className={`text-[10px] font-bold ${exists ? 'text-green-700' : 'text-red-700'}`}>{exists ? 'Online' : 'MISSING/OLD'}</div>
                             </div>
                         </div>
                     ))}
@@ -466,7 +488,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 <div className="space-y-4 pt-4 border-t border-slate-50">
                     <div className="flex justify-between items-center">
-                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Initialization Script</h4>
+                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Repair / Patch Script</h4>
                         <button onClick={copySql} className="text-xs font-black text-brand-600 flex items-center gap-2 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-all">
                             <Copy size={14}/> Copy All SQL
                         </button>
@@ -475,19 +497,19 @@ export const Settings: React.FC<SettingsProps> = ({
                         <pre className="text-[11px] font-mono text-brand-300 overflow-x-auto max-h-64 custom-scrollbar leading-relaxed">
                             {FULL_SCHEMA_SQL}
                         </pre>
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-40 pointer-events-none"/>
                     </div>
-                    <div className="bg-brand-50 p-4 rounded-xl flex gap-3 items-start">
-                        <Info size={18} className="text-brand-600 mt-0.5 shrink-0"/>
-                        <p className="text-xs font-medium text-brand-800">
-                            <strong>How to fix missing tables:</strong> Go to your Supabase Dashboard, open the <strong>SQL Editor</strong>, paste the script above, and click <strong>Run</strong>. This will create any missing tables (including <code>goals</code>) and set up the necessary security policies.
+                    <div className="bg-amber-50 p-4 rounded-xl flex gap-3 items-start border border-amber-100">
+                        <AlertTriangle size={18} className="text-amber-600 mt-0.5 shrink-0"/>
+                        <p className="text-xs font-medium text-amber-800 leading-relaxed">
+                            <strong>Fix PGRST204 Error:</strong> If you see "interest_rate column not found", simply copy the script above, go to your <strong>Supabase Dashboard -> SQL Editor</strong>, paste it, and click <strong>Run</strong>. This adds the new columns without affecting your data.
                         </p>
                     </div>
                 </div>
             </div>
         </div>
       )}
-
+      
+      {/* Categories Tab ... (unchanged) */}
       {activeTab === 'categories' && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -536,7 +558,7 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {/* Restore Modal */}
+      {/* Restore Modal ... (unchanged) */}
       {showRestoreModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[120] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xl overflow-hidden animate-fade-in">
@@ -575,9 +597,3 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 };
-
-const XCircle = ({ size, className }: { size?: number, className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
-    </svg>
-);

@@ -126,37 +126,68 @@ const App: React.FC = () => {
 
   const handleRestoreData = async (data: any) => {
     setIsRestoring(true);
-    setRestorationProgress('Preparing data synchronization...');
+    setRestorationProgress('Preparing synchronization...');
     try {
       if (!data.accounts || !Array.isArray(data.accounts)) throw new Error("Invalid backup file: Missing 'accounts'.");
-      setRestorationProgress('Normalizing identifiers...');
+      
       const isUuid = (id: any) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
       const idMap = new Map<string, string>();
+      
+      setRestorationProgress('Updating IDs...');
       data.accounts = data.accounts.map((acc: any) => { if (!isUuid(acc.id)) { const newId = crypto.randomUUID(); idMap.set(acc.id, newId); return { ...acc, id: newId }; } return acc; });
       const updateLink = (id: string | undefined) => (id && idMap.has(id)) ? idMap.get(id) : id;
+      
       data.accounts = data.accounts.map((acc: any) => ({ ...acc, payFromAccountId: updateLink(acc.payFromAccountId) }));
       if (data.transactions) data.transactions = data.transactions.map((tx: any) => ({ ...tx, id: isUuid(tx.id) ? tx.id : crypto.randomUUID(), accountId: updateLink(tx.accountId), toAccountId: updateLink(tx.toAccountId) }));
       if (data.recurring) data.recurring = data.recurring.map((rec: any) => ({ ...rec, id: isUuid(rec.id) ? rec.id : crypto.randomUUID(), accountId: updateLink(rec.accountId), toAccountId: updateLink(rec.toAccountId) }));
       if (data.valuations) data.valuations = data.valuations.map((val: any) => ({ ...val, id: isUuid(val.id) ? val.id : crypto.randomUUID(), accountId: updateLink(val.accountId) }));
       if (data.goals) data.goals = data.goals.map((gl: any) => ({ ...gl, id: isUuid(gl.id) ? gl.id : crypto.randomUUID(), accountId: updateLink(gl.accountId) }));
-      setRestorationProgress('Phase 1: Purging cloud records...');
+
+      setRestorationProgress('Clearing existing records...');
       await clearAllUserData();
-      if (data.categories) await batchCreateCategories(data.categories);
-      if (data.accountSubTypes) await batchCreateAccountSubTypes(data.accountSubTypes);
-      setRestorationProgress(`Phase 2: Initializing ${data.accounts.length} accounts...`);
+
+      if (data.categories?.length) {
+          setRestorationProgress('Uploading categories...');
+          await batchCreateCategories(data.categories);
+      }
+      if (data.accountSubTypes?.length) {
+          setRestorationProgress('Uploading account sub-types...');
+          await batchCreateAccountSubTypes(data.accountSubTypes);
+      }
+      
+      setRestorationProgress(`Uploading ${data.accounts.length} accounts...`);
       await batchCreateAccounts(data.accounts.map((a: any) => ({ ...a, payFromAccountId: undefined })));
+      
+      setRestorationProgress('Linking accounts...');
       await updateAccountsLinks(data.accounts);
-      if (data.transactions?.length) await batchCreateTransactions(data.transactions);
-      if (data.recurring?.length) await batchCreateRecurring(data.recurring);
-      if (data.valuations?.length) await batchCreateValuations(data.valuations);
-      if (data.goals?.length) await batchCreateGoals(data.goals);
-      if (data.categoryBudgets?.length) await batchCreateCategoryBudgets(data.categoryBudgets);
-      setRestorationProgress('Finalizing...');
+
+      if (data.transactions?.length) {
+          setRestorationProgress(`Uploading ${data.transactions.length} transactions...`);
+          await batchCreateTransactions(data.transactions);
+      }
+      if (data.recurring?.length) {
+          setRestorationProgress(`Uploading ${data.recurring.length} recurring rules...`);
+          await batchCreateRecurring(data.recurring);
+      }
+      if (data.valuations?.length) {
+          setRestorationProgress(`Uploading ${data.valuations.length} valuations...`);
+          await batchCreateValuations(data.valuations);
+      }
+      if (data.goals?.length) {
+          setRestorationProgress(`Uploading ${data.goals.length} goals...`);
+          await batchCreateGoals(data.goals);
+      }
+      if (data.categoryBudgets?.length) {
+          setRestorationProgress(`Uploading ${data.categoryBudgets.length} budgets...`);
+          await batchCreateCategoryBudgets(data.categoryBudgets);
+      }
+
+      setRestorationProgress('Finalizing sync...');
       await loadData();
-      alert(`SUCCESS: Data restored successfully.`);
+      alert(`SUCCESS: Data restored. Logged ${data.transactions?.length || 0} transactions across ${data.accounts.length} accounts.`);
     } catch (e: any) {
       console.error(e);
-      alert(`RESTORE FAILED: ${e.message}`);
+      alert(`RESTORE FAILED: ${e.message}. Check Database Health tab for missing tables.`);
     } finally {
       setIsRestoring(false);
       setRestorationProgress('');

@@ -26,15 +26,27 @@ const stringifyAny = (obj: any): string => {
 
 const getContext = async () => {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Supabase client failed to initialize.");
+    if (!supabase) throw new Error("Supabase client failed to initialize. Check environment variables.");
     try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
         const userId = session?.user?.id;
-        if (!userId) throw new Error("User session not found.");
+        if (!userId) throw new Error("User session not found. Please log in again.");
         return { supabase, userId };
     } catch (e: any) {
         throw e;
+    }
+};
+
+export const testConnection = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+        const { supabase } = await getContext();
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        if (!data.user) throw new Error("Connection OK but user identity is null.");
+        return { success: true, message: `Successfully connected as ${data.user.email}` };
+    } catch (e: any) {
+        return { success: false, message: stringifyAny(e) };
     }
 };
 
@@ -43,9 +55,10 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
         const result = await query;
         if (result.error) {
             const error = result.error;
-            // 42P01: undefined_table (Postgres)
-            // PGRST205: Could not find the table in the schema cache (PostgREST/Supabase)
-            if (error.code === '42P01' || error.code === 'PGRST205') {
+            // Handle missing table (42P01) or PostgREST schema errors (PGRST204/205)
+            const isSchemaError = ['42P01', 'PGRST204', 'PGRST205'].includes(error.code);
+            if (isSchemaError) {
+                console.warn(`SafeFetch: Skipping ${tableName} due to schema mismatch (${error.code})`);
                 return []; 
             }
             throw error;
@@ -53,17 +66,11 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
         return (result.data || []).map(mapper);
     } catch (e: any) {
         const errStr = stringifyAny(e);
-        const isTableMissing = errStr.includes('42P01') || errStr.includes('PGRST205');
-        const isNetworkError = errStr.includes('NetworkError') || errStr.includes('Failed to fetch') || errStr.includes('TypeError');
-        
-        if (!isTableMissing && !isNetworkError) {
-            console.error(`Error fetching from ${tableName}:`, errStr);
-        }
+        console.error(`Error fetching from ${tableName}:`, errStr);
         return [];
     }
 }
 
-// --- Diagnostic Helpers ---
 export const checkTableHealth = async (): Promise<Record<string, boolean>> => {
     const tables = ['accounts', 'transactions', 'recurring', 'category_budgets', 'valuations', 'goals', 'categories', 'account_sub_types'];
     const health: Record<string, boolean> = {};
@@ -73,13 +80,10 @@ export const checkTableHealth = async (): Promise<Record<string, boolean>> => {
     try {
         await Promise.all(tables.map(async (table) => {
             const { error } = await supabase.from(table).select('id').limit(1);
-            // If we get a specific "table not found" error, it's false. 
-            // If it's a network error, we can't be sure, but usually we mark as true/unknown to avoid scaring user
-            const isMissing = error && (error.code === '42P01' || error.code === 'PGRST205');
-            health[table] = !isMissing;
+            const isError = error && (['42P01', 'PGRST204', 'PGRST205'].includes(error.code));
+            health[table] = !isError;
         }));
     } catch (e) {
-        // Global network failure
         return {};
     }
     return health;
@@ -105,24 +109,30 @@ const mapAccount = (row: any): Account => ({
     termMonths: row.term_months ? Number(row.term_months) : undefined,
 });
 
-const accountToDb = (a: Account, userId: string) => ({
-    id: a.id,
-    user_id: userId,
-    name: a.name,
-    owner: a.owner,
-    type: a.type,
-    sub_type: a.subType,
-    currency: a.currency,
-    color: a.color,
-    initial_balance: a.initialBalance,
-    credit_limit: a.creditLimit,
-    payment_day: a.paymentDay,
-    pay_from_account_id: a.payFromAccountId,
-    investment_track: a.investmentTrack,
-    estimated_pension: a.estimatedPension,
-    interest_rate: a.interestRate,
-    term_months: a.termMonths,
-});
+const accountToDb = (a: Account, userId: string) => {
+    const payload: any = {
+        id: a.id,
+        user_id: userId,
+        name: a.name,
+        type: a.type,
+        currency: a.currency,
+        color: a.color,
+        initial_balance: a.initialBalance,
+    };
+    
+    // Only add optional fields if they are actually present to avoid PGRST204 on older schemas
+    if (a.owner !== undefined) payload.owner = a.owner;
+    if (a.subType !== undefined) payload.sub_type = a.subType;
+    if (a.creditLimit !== undefined) payload.credit_limit = a.creditLimit;
+    if (a.paymentDay !== undefined) payload.payment_day = a.paymentDay;
+    if (a.payFromAccountId !== undefined) payload.pay_from_account_id = a.payFromAccountId;
+    if (a.investmentTrack !== undefined) payload.investment_track = a.investmentTrack;
+    if (a.estimatedPension !== undefined) payload.estimated_pension = a.estimatedPension;
+    if (a.interestRate !== undefined) payload.interest_rate = a.interestRate;
+    if (a.termMonths !== undefined) payload.term_months = a.termMonths;
+    
+    return payload;
+};
 
 const mapTransaction = (row: any): Transaction => ({
     id: row.id,
@@ -258,8 +268,6 @@ const goalToDb = (g: FinancialGoal, userId: string) => ({
   account_id: g.accountId || null,
   is_active: g.isActive,
 });
-
-// --- Exports ---
 
 export const fetchAccounts = async (uid?: string): Promise<Account[]> => {
     try {
@@ -511,7 +519,7 @@ export const clearAllUserData = async () => {
     for (const table of tableOrder) {
         try {
             const { error } = await supabase.from(table).delete().eq('user_id', userId);
-            if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
+            if (error && !(['42P01', 'PGRST204', 'PGRST205'].includes(error.code))) {
                 console.warn(`Purge failed for table ${table}:`, error.message);
             }
         } catch (e) {}
