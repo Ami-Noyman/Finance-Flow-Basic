@@ -315,42 +315,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
            )}
       </div>
 
-      {/* 3. LIQUID ASSETS DISTRIBUTION (ACCOUNT SNAPSHOT) */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-800">Liquid Assets Overview</h3>
-            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Checking, Credit & Cash Distribution</p>
-          </div>
-        </div>
-        
-        {liquidAccountBarData.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-100 rounded-3xl">
-            <BarChart3 size={48} className="text-slate-200 mb-4"/>
-            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No Liquid Accounts Defined</p>
-          </div>
-        ) : (
-          <div className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={liquidAccountBarData} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={100} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={24}>
-                  {liquidAccountBarData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '9px', fontWeight: '900', fill: '#475569'}} offset={10} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* 4. LIQUIDITY TREND CHART (FORECAST & HISTORY) */}
+      {/* 3. LIQUIDITY TREND CHART (FORECAST & HISTORY - RESTORED TO PRIMARY POSITION) */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 animate-fade-in">
         <div className="flex justify-between items-center mb-8">
           <div className="space-y-1">
@@ -383,6 +348,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* 4. LIQUID ASSETS DISTRIBUTION (ACCOUNT SNAPSHOT) */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800">Liquid Assets Overview</h3>
+            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Checking, Credit & Cash Distribution</p>
+          </div>
+        </div>
+        
+        {liquidAccountBarData.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-100 rounded-3xl">
+            <BarChart3 size={48} className="text-slate-200 mb-4"/>
+            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No Liquid Accounts Defined</p>
+          </div>
+        ) : (
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={liquidAccountBarData} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={100} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
+                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={24}>
+                  {liquidAccountBarData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '9px', fontWeight: '900', fill: '#475569'}} offset={10} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
     </div>

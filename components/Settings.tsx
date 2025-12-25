@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
@@ -429,8 +430,9 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleOpenGeminiKey = async () => {
-      if (window.aistudio) {
-          await window.aistudio.openSelectKey();
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio) {
+          await aiStudio.openSelectKey();
           window.location.reload();
       } else {
           alert("To use AI on Vercel, please add API_KEY to your environment variables.");
