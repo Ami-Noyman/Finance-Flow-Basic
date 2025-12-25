@@ -52,7 +52,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleTabChange = (e: any) => {
-        if (e.detail) setActiveTab(e.detail);
+        if (e.detail) {
+            // Split to support deep navigation like 'settings:db'
+            const [tab] = e.detail.split(':');
+            setActiveTab(tab);
+        }
     };
     window.addEventListener('changeTab', handleTabChange);
     return () => window.removeEventListener('changeTab', handleTabChange);

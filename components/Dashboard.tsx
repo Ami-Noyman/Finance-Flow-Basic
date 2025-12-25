@@ -5,7 +5,7 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain, Database } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
@@ -41,14 +41,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   useEffect(() => {
     const key = getApiKey();
-    if (key && transactions.length > 0) {
+    if (key) {
       setIsAiMissing(false);
-      setIsAnalyzing(true);
-      analyzeAnomalies(transactions).then(res => {
-        setAnomalies(res);
+      if (transactions.length > 0) {
+        setIsAnalyzing(true);
+        analyzeAnomalies(transactions).then(res => {
+          setAnomalies(res);
+          setIsAnalyzing(false);
+        });
+      } else {
+        setAnomalies([]);
         setIsAnalyzing(false);
-      });
-    } else if (!key) {
+      }
+    } else {
       setIsAiMissing(true);
     }
   }, [transactions.length]);
@@ -245,7 +250,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       )}
 
       {/* Flash Insights Marquee / AI Connector */}
-      {(anomalies.length > 0 || isAnalyzing || isAiMissing) && (
+      {(anomalies.length > 0 || isAnalyzing || isAiMissing || (transactions.length === 0 && !isAiMissing)) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
              <Sparkles size={16} className="text-brand-400 animate-pulse" />
@@ -259,6 +264,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                 </div>
               ) : isAnalyzing ? (
                 <span className="text-xs font-medium animate-pulse">המערכת מנתחת תנועות חריגות...</span>
+              ) : transactions.length === 0 ? (
+                <div className="flex items-center justify-between w-full">
+                   <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-brand-300">הסוכן מוכן, אך חסרים נתונים לניתוח. אם מופיעה שגיאת Database, יש להפעיל את התיקון.</span>
+                      <div className="p-1 bg-amber-500/20 text-amber-400 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-tighter shrink-0"><Database size={10}/> Schema Warning</div>
+                   </div>
+                   <button 
+                     onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings:db' }))} 
+                     className="text-[10px] font-black uppercase bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500 transition-colors whitespace-nowrap ml-4 shadow-lg shadow-amber-900/20"
+                   >
+                     Fix Database Now
+                   </button>
+                </div>
+              ) : anomalies.length === 0 ? (
+                <span className="text-xs font-medium text-brand-300">לא נמצאו חריגות משמעותיות ב-50 התנועות האחרונות.</span>
               ) : (
                 <div className="flex gap-8 animate-marquee whitespace-nowrap">
                   {anomalies.map((a, i) => (

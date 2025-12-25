@@ -4,17 +4,17 @@ import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../ty
 
 /**
  * Interface for AI Studio external key management.
- * Renamed from AiStudioGlobal to AIStudio to match existing global definitions.
+ * Moved into declare global to resolve type mismatch and modifier conflicts.
  */
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
   interface Window {
-    // Added readonly modifier to align with global property modifiers and avoid TS mismatch errors.
-    readonly aistudio: AIStudio;
+    // Removed readonly to avoid modifier mismatch with the environment's global declaration.
+    aistudio: AIStudio;
   }
 }
 

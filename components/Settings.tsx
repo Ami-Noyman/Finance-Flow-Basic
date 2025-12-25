@@ -2,9 +2,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
-import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon, Brain, Sparkles, ExternalLink, Key } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon, Brain, Sparkles, ExternalLink, Key, HardDrive } from 'lucide-react';
 import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection, fetchRules, saveRule, deleteRule } from '../services/storageService';
-import { initSupabase, getDebugInfo } from '../services/supabaseClient';
+import { initSupabase, getDebugInfo, getSupabaseConfig } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
 import { getApiKey } from '../services/geminiService';
 
@@ -210,7 +210,19 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const debugInfo = useMemo(() => getDebugInfo(), [activeTab]);
+  const supabaseUrl = useMemo(() => getSupabaseConfig().url, []);
   
+  // Listen for navigation to the DB tab from other parts of the app
+  useEffect(() => {
+    const handleSubTab = (e: any) => {
+        if (e.detail === 'settings:db') {
+            setActiveTab('db');
+        }
+    };
+    window.addEventListener('changeTab', handleSubTab);
+    return () => window.removeEventListener('changeTab', handleSubTab);
+  }, []);
+
   // Restore Modal State
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restoreStage, setRestoreStage] = useState<'upload' | 'summary'>('upload');
@@ -429,12 +441,12 @@ export const Settings: React.FC<SettingsProps> = ({
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-      <div className="flex space-x-4 border-b border-gray-200 overflow-x-auto">
-        <button onClick={() => setActiveTab('accounts')} className={`pb-2 px-4 font-medium transition-colors border-b-2 ${activeTab === 'accounts' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Accounts</button>
-        <button onClick={() => setActiveTab('categories')} className={`pb-2 px-4 font-medium transition-colors border-b-2 ${activeTab === 'categories' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Categories</button>
-        <button onClick={() => setActiveTab('rules')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'rules' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Zap size={16} /> Rules</button>
-        <button onClick={() => setActiveTab('data')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'data' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Database size={16} /> Backup</button>
-        <button onClick={() => setActiveTab('db')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'db' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Server size={16} /> Database</button>
+      <div className="flex flex-wrap border-b border-gray-200">
+        <button onClick={() => setActiveTab('accounts')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm ${activeTab === 'accounts' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}>Accounts</button>
+        <button onClick={() => setActiveTab('categories')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm ${activeTab === 'categories' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}>Categories</button>
+        <button onClick={() => setActiveTab('rules')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'rules' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Zap size={14} /> Rules</button>
+        <button onClick={() => setActiveTab('data')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'data' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Database size={14} /> Backup</button>
+        <button onClick={() => setActiveTab('db')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'db' ? 'border-brand-500 text-brand-600 font-black' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Server size={14} /> Database</button>
       </div>
       
       {activeTab === 'accounts' && (
@@ -686,23 +698,23 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Supabase Endpoint</p>
-                        <div className="text-sm font-black flex items-center gap-2">
-                           {debugInfo.hasUrl ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
-                           <span>{debugInfo.urlPreview}</span>
+                        <div className="text-sm font-black flex items-center gap-2 overflow-hidden truncate">
+                           {debugInfo.hasUrl ? <CheckCircle2 size={14} className="text-green-500 shrink-0"/> : <XCircle size={14} className="text-red-500 shrink-0"/>}
+                           <span className="truncate">{debugInfo.hasUrl ? supabaseUrl.replace('https://', '') : 'MISSING'}</span>
                         </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">AI Agent Status</p>
                         <div className="text-sm font-black flex items-center gap-2">
                            {getApiKey() ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
-                           <span>{getApiKey() ? 'API_KEY LOADED' : 'API_KEY MISSING'}</span>
+                           <span>{getApiKey() ? 'READY' : 'KEY MISSING'}</span>
                         </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Anon Key Status</p>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Auth Anon Key</p>
                         <div className="text-sm font-black flex items-center gap-2">
                            {debugInfo.hasKey ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
-                           <span>{debugInfo.hasKey ? 'PRESENT' : 'MISSING'}</span>
+                           <span>{debugInfo.hasKey ? 'INJECTED' : 'MISSING'}</span>
                         </div>
                     </div>
                 </div>
@@ -758,46 +770,66 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
             </div>
 
-            <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
+            <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8 relative overflow-hidden">
+                {/* Aggressive warning if tables are missing */}
+                {Object.values(tableHealth).some(v => v === false) && (
+                    <div className="absolute inset-0 bg-red-600/5 backdrop-blur-[1px] z-10 pointer-events-none border-4 border-red-500/20 rounded-3xl"></div>
+                )}
+
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Database Schema Health</h3>
-                        <p className="text-sm text-slate-500 mt-1 font-medium">Verify table status and column availability.</p>
+                        <p className="text-sm text-slate-500 mt-1 font-medium">Project: <strong>{supabaseUrl}</strong></p>
                     </div>
-                    <button onClick={refreshHealth} disabled={isCheckingHealth} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all">
+                    <button onClick={refreshHealth} disabled={isCheckingHealth} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all z-20">
                         <RefreshCw size={14} className={isCheckingHealth ? 'animate-spin' : ''}/> {isCheckingHealth ? 'Checking...' : 'Refresh Health'}
                     </button>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 relative z-20">
                     {Object.entries(tableHealth).map(([table, exists]) => (
-                        <div key={table} className={`p-4 rounded-2xl border flex items-center gap-3 ${exists ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                            {exists ? <CheckCircle2 size={18} className="text-green-600"/> : <AlertCircle size={18} className="text-red-600"/>}
+                        <div key={table} className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${exists ? 'bg-green-50 border-green-100' : 'bg-red-100 border-red-300 scale-105 shadow-lg'}`}>
+                            {exists ? <CheckCircle2 size={18} className="text-green-600"/> : <AlertCircle size={20} className="text-red-600 animate-pulse"/>}
                             <div>
-                                <div className="text-xs font-black uppercase tracking-wider text-slate-700">{table}</div>
-                                <div className={`text-[10px] font-bold ${exists ? 'text-green-700' : 'text-red-700'}`}>{exists ? 'Online' : 'MISSING/OLD'}</div>
+                                <div className={`text-[10px] font-black uppercase tracking-wider ${exists ? 'text-slate-700' : 'text-red-900'}`}>{table}</div>
+                                <div className={`text-[10px] font-bold ${exists ? 'text-green-700' : 'text-red-700 font-black'}`}>{exists ? 'Online' : 'MISSING'}</div>
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <div className="space-y-4 pt-4 border-t border-slate-50">
-                    <div className="flex justify-between items-center">
-                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Repair / Patch Script</h4>
-                        <button onClick={copySql} className="text-xs font-black text-brand-600 flex items-center gap-2 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-all">
+                <div className="space-y-4 pt-4 border-t border-slate-50 relative z-20">
+                    <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl flex gap-5 items-start">
+                        <div className="bg-red-500 text-white p-3 rounded-2xl shadow-lg shadow-red-500/20 shrink-0"><HardDrive size={24}/></div>
+                        <div className="space-y-2">
+                           <h4 className="text-lg font-black text-red-900">CRITICAL: Table Missing Errors (PGRST204/205)</h4>
+                           <p className="text-sm text-red-800 font-medium leading-relaxed">
+                               If any table above says <strong>MISSING</strong>, your app will not function and AI will have no data to analyze. 
+                               This happens when you connect a fresh project but haven't run the setup script.
+                           </p>
+                           <div className="pt-2 space-y-4">
+                               <p className="text-xs text-red-900 font-black uppercase tracking-widest">Follow these steps:</p>
+                               <ol className="text-sm text-red-800 list-decimal list-inside space-y-2 ml-1 font-medium">
+                                   <li>Copy the entire SQL script below.</li>
+                                   <li>Go to your <a href="https://app.supabase.com" target="_blank" className="underline font-black hover:text-red-600">Supabase Dashboard</a>.</li>
+                                   <li>Select project <strong>{supabaseUrl.split('.')[0].replace('https://', '')}</strong>.</li>
+                                   <li>Open <strong>SQL Editor</strong> &rarr; <strong>New Query</strong>.</li>
+                                   <li>Paste and click <strong>Run</strong>.</li>
+                               </ol>
+                           </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-6">
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Repair / Patch Script</h4>
+                        <button onClick={copySql} className="text-xs font-black text-brand-600 flex items-center gap-2 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-all border border-brand-200">
                             <Copy size={14}/> Copy All SQL
                         </button>
                     </div>
-                    <div className="p-6 bg-slate-900 rounded-2xl relative overflow-hidden group">
-                        <pre className="text-[11px] font-mono text-brand-300 overflow-x-auto max-h-64 custom-scrollbar leading-relaxed">
+                    <div className="p-6 bg-slate-900 rounded-2xl relative overflow-hidden group border border-slate-700 shadow-2xl">
+                        <pre className="text-[11px] font-mono text-brand-300 overflow-x-auto max-h-80 custom-scrollbar leading-relaxed">
                             {FULL_SCHEMA_SQL}
                         </pre>
-                    </div>
-                    <div className="bg-amber-50 p-4 rounded-xl flex gap-3 items-start border border-amber-100">
-                        <AlertTriangle size={18} className="text-amber-600 mt-0.5 shrink-0"/>
-                        <p className="text-xs font-medium text-amber-800 leading-relaxed">
-                            <strong>Fix PGRST204/205 Error:</strong> If you see "table not found" or "column not found", copy the script above, go to your <strong>Supabase Dashboard -&gt; SQL Editor</strong>, paste it, and click <strong>Run</strong>. This will initialize any missing features without affecting existing data.
-                        </p>
                     </div>
                 </div>
             </div>
