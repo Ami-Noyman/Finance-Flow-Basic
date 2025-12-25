@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ComposedChart, BarChart, Bar, LabelList } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, Frequency } from '../types';
-import { generateFinancialInsight, createFinancialChatSession, getApiKey } from '../services/geminiService';
+import { generateFinancialInsight, createFinancialChatSession, hasValidApiKey } from '../services/geminiService';
 import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard, AlertCircle } from 'lucide-react';
 import { addDays, format, parseISO, startOfDay, isSameDay, startOfMonth, endOfMonth, differenceInDays, addMonths, isBefore, addWeeks, addYears } from 'date-fns';
 import { formatCurrency } from '../utils/currency';
@@ -233,7 +233,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                   if (t.type === TransactionType.INCOME) scenarioCheckingBalances[s.id] += t.amount;
                   else scenarioCheckingBalances[s.id] -= t.amount * reduction;
               }
-              if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) scenarioCheckingBalances[s.id] += t.amount;
+              if (t.toAccountId && checkingAccountIds.includes(t.toAccountId)) scenarioCheckingBalances[s.id] += t.amount;
           });
 
           scenarioRecs[s.id].forEach(r => {
@@ -252,7 +252,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                       if (r.type === TransactionType.INCOME) scenarioCheckingBalances[s.id] += scenarioAmt; 
                       else scenarioCheckingBalances[s.id] -= scenarioAmt * reduction; 
                   }
-                  if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) scenarioCheckingBalances[s.id] += scenarioAmt;
+                  if (r.toAccountId && checkingAccountIds.includes(r.toAccountId)) scenarioCheckingBalances[s.id] += scenarioAmt;
 
                   r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
               }
@@ -297,8 +297,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     if (e) e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
     
-    if (!getApiKey()) {
-      alert("מפתח API חסר. נא להגדיר API_KEY בהגדרות או במשתני הסביבה.");
+    if (!hasValidApiKey()) {
+      alert("מפתח API חסר. נא להגדיר API_KEY במשתני הסביבה של Vercel.");
       return;
     }
 
@@ -307,6 +307,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     const newMessages: ChatMessage[] = [...persistentChatMessages, { role: 'user', text: userMsg }];
     if (onUpdateChatMessages) onUpdateChatMessages(newMessages);
     setIsChatLoading(true);
+    setAiError(null);
     try {
       if (!chatSessionRef?.current) {
           if (chatSessionRef) chatSessionRef.current = createFinancialChatSession(transactions, recurring, accounts);
@@ -319,8 +320,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
       const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result.text || 'לא התקבלה תגובה מהיועץ.' }];
       if (onUpdateChatMessages) onUpdateChatMessages(finalMessages);
     } catch (e: any) {
-      console.error("AI Advisor Messaging Error:", e);
-      let errorMsg = "שגיאה בתקשורת עם הבינה המלאכותית.";
+      console.error("AI Advisor Messaging Error Details:", e);
+      let errorMsg = `שגיאה בתקשורת: ${e.message || "Unknown API error"}`;
       if (e.message === "API_KEY_MISSING") errorMsg = "מפתח API (API_KEY) חסר במערכת. נא להגדיר ב-Vercel Environment Variables.";
       
       if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: errorMsg }]);
@@ -336,11 +337,11 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
         const res = await generateFinancialInsight(transactions, forecastData);
         setInsight(res);
     } catch (e: any) {
-        console.error(e);
+        console.error("Insight Generation Error Details:", e);
         if (e.message === "API_KEY_MISSING") {
             setAiError("מפתח API (API_KEY) חסר במערכת. יש להגדיר אותו בהגדרות Vercel כדי להפעיל תכונות AI.");
         } else {
-            setAiError("אירעה שגיאה בייצור התובנות. נסה שוב מאוחר יותר.");
+            setAiError(`אירעה שגיאה בייצור התובנות: ${e.message || "Gemini SDK Error"}`);
         }
     } finally {
         setIsLoadingInsight(false);
@@ -413,6 +414,11 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
             ) : (
                 <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
                     <div className="flex-1 overflow-y-auto p-6 space-y-4" ref={chatContainerRef}>
+                        {aiError && (
+                            <div className="bg-red-50 p-4 rounded-xl text-red-700 text-xs font-bold border border-red-100">
+                                {aiError}
+                            </div>
+                        )}
                         {persistentChatMessages.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
                                 <Bot size={48} className="opacity-20"/>

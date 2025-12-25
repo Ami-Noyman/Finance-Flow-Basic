@@ -5,11 +5,11 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
-import { analyzeAnomalies, getApiKey } from '../services/geminiService';
+import { analyzeAnomalies, hasValidApiKey } from '../services/geminiService';
 import { checkTableHealth } from '../services/storageService';
 
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
@@ -27,7 +27,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [showIndividualLines, setShowIndividualLines] = useState(true);
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isAiMissing, setIsAiMissing] = useState(!getApiKey());
+  const [isAiMissing, setIsAiMissing] = useState(!hasValidApiKey());
   const [dbUnhealthy, setDbUnhealthy] = useState(false);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   
@@ -49,18 +49,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   useEffect(() => {
     checkHealth();
-    const key = getApiKey();
-    if (key) {
-      setIsAiMissing(false);
-      if (transactions.length > 0) {
-        setIsAnalyzing(true);
-        analyzeAnomalies(transactions).then(res => {
-          setAnomalies(res);
-          setIsAnalyzing(false);
-        });
-      }
-    } else {
-      setIsAiMissing(true);
+    const isAiReady = hasValidApiKey();
+    setIsAiMissing(!isAiReady);
+    
+    if (isAiReady && transactions.length > 0) {
+      setIsAnalyzing(true);
+      analyzeAnomalies(transactions).then(res => {
+        setAnomalies(res);
+        setIsAnalyzing(false);
+      }).catch(() => setIsAnalyzing(false));
     }
   }, [transactions.length]);
 
@@ -79,6 +76,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const displayCurrency = selectedAccountId 
      ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
      : (accounts[0]?.currency || 'ILS');
+
+  const balances = useMemo(() => {
+    const accBalances: Record<string, number> = {};
+    accounts.forEach(a => accBalances[a.id] = a.initialBalance || 0);
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    transactions.forEach(t => {
+      if (t.date > todayStr) return;
+      if (t.type === TransactionType.INCOME) accBalances[t.accountId] += t.amount;
+      else if (t.type === TransactionType.EXPENSE) accBalances[t.accountId] -= t.amount;
+      else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+          accBalances[t.accountId] -= t.amount;
+          if (accBalances[t.toAccountId] !== undefined) accBalances[t.toAccountId] += t.amount;
+      }
+    });
+    return accBalances;
+  }, [transactions, accounts]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -109,39 +122,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     const incomeChange = lastIncome ? ((currentIncome - lastIncome) / lastIncome) * 100 : 0;
     const expenseChange = lastExpense ? ((currentExpense - lastExpense) / lastExpense) * 100 : 0;
 
+    // Net Worth Calculation (All account balances minus liabilities)
+    // FIX: Added explicit type annotations to resolve Operator '+' cannot be applied to types 'unknown' and 'unknown'.
+    const netWorth = Object.values(balances).reduce((sum: number, b: number) => sum + b, 0);
+
     return {
       currentIncome,
       currentExpense,
       netCashFlow: currentIncome - currentExpense,
       incomeChange,
-      expenseChange
+      expenseChange,
+      netWorth
     };
-  }, [transactions, selectedAccountId]);
-
-  const balances = useMemo(() => {
-    const accBalances: Record<string, number> = {};
-    accounts.forEach(a => accBalances[a.id] = a.initialBalance || 0);
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    transactions.forEach(t => {
-      if (t.date > todayStr) return;
-      if (t.type === TransactionType.INCOME) accBalances[t.accountId] += t.amount;
-      else if (t.type === TransactionType.EXPENSE) accBalances[t.accountId] -= t.amount;
-      else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
-          accBalances[t.accountId] -= t.amount;
-          if (accBalances[t.toAccountId] !== undefined) accBalances[t.toAccountId] += t.amount;
-      }
-    });
-    return accBalances;
-  }, [transactions, accounts]);
+  }, [transactions, selectedAccountId, balances]);
 
   const accountBarData = useMemo(() => {
+    // Include more account types in the bar data so the graph doesn't appear empty
     return sortAccounts(accounts)
-      .filter(a => (a.type === 'checking' || a.type === 'credit' || a.type === 'cash') && (!selectedAccountId || a.id === selectedAccountId))
+      .filter(a => (!selectedAccountId || a.id === selectedAccountId))
       .map(a => ({
           name: a.name,
           balance: balances[a.id] || 0,
-          color: a.color
-      }));
+          color: a.color,
+          type: a.type
+      }))
+      .filter(a => a.balance !== 0) // Hide zero-balance accounts to keep chart clean
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
   }, [accounts, balances, selectedAccountId]);
 
   const balanceHistory = useMemo(() => {
@@ -153,21 +159,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     if (targetAccountIds.length === 0) return [];
     
     const today = startOfDay(new Date());
-    const currentBalances: Record<string, number> = {};
-    targetAccountIds.forEach(id => currentBalances[id] = accounts.find(a => a.id === id)?.initialBalance || 0);
+    const currentBalancesAtHistory: Record<string, number> = {};
+    targetAccountIds.forEach(id => currentBalancesAtHistory[id] = accounts.find(a => a.id === id)?.initialBalance || 0);
 
+    // Reconstruct history
     transactions.filter(t => parseISO(t.date) <= today).forEach(t => {
         if (targetAccountIds.includes(t.accountId)) {
-            if (t.type === TransactionType.INCOME) currentBalances[t.accountId] += t.amount;
-            else currentBalances[t.accountId] -= t.amount;
+            if (t.type === TransactionType.INCOME) currentBalancesAtHistory[t.accountId] += t.amount;
+            else currentBalancesAtHistory[t.accountId] -= t.amount;
         }
-        if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) currentBalances[t.toAccountId] += t.amount;
+        if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) currentBalancesAtHistory[t.toAccountId] += t.amount;
     });
 
     const dataPoints: any[] = [];
     const getSum = (bals: Record<string, number>) => Object.values(bals).reduce((s, v) => s + v, 0);
 
-    const tempBals = { ...currentBalances };
+    const tempBals = { ...currentBalancesAtHistory };
     dataPoints.push({ date: format(today, 'yyyy-MM-dd'), displayDate: 'Today', balance: getSum(tempBals), type: 'actual', ...tempBals });
     
     for (let i = 1; i <= 30; i++) {
@@ -180,10 +187,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
             }
             if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) tempBals[t.toAccountId] -= t.amount;
         });
-        dataPoints.unshift({ date: format(subDays(d, 1), 'yyyy-MM-dd'), displayDate: format(d, 'MMM d'), balance: getSum(tempBals), type: 'actual', ...tempBals });
+        dataPoints.unshift({ date: dStr, displayDate: format(d, 'MMM d'), balance: getSum(tempBals), type: 'actual', ...tempBals });
     }
 
-    const forecastBals = { ...currentBalances };
+    const forecastBals = { ...currentBalancesAtHistory };
     const activeRecs = recurring.filter(r => r.isActive).map(r => ({ ...r, next: parseISO(r.nextDueDate) }));
     for (let i = 1; i <= 60; i++) {
         const d = addDays(today, i);
@@ -228,7 +235,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                         <h2 className="text-2xl font-black tracking-tight uppercase">Database Schema Error (PGRST204)</h2>
                         <p className="text-red-100 font-medium max-w-xl mt-1 leading-relaxed">
                             Your Vercel deployment is connected to a Supabase project that hasn't been initialized. 
-                            AI features and transactions are currently blocked.
                         </p>
                     </div>
                 </div>
@@ -317,7 +323,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><TrendingUp size={24}/></div>
@@ -340,10 +346,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
           <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.currentExpense, displayCurrency)}</h3>
         </div>
 
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Layers size={24}/></div>
+            <div className="text-[10px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-2 py-1 rounded-lg">Net Worth</div>
+          </div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Global Assets</p>
+          <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.netWorth, displayCurrency)}</h3>
+        </div>
+
         <div className="bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Zap size={24}/></div>
-            <div className="text-[10px] font-black text-brand-400 uppercase tracking-widest bg-brand-500/10 px-2 py-1 rounded-lg">Live Flow</div>
+            <div className="text-[10px] font-black text-brand-400 uppercase tracking-widest bg-brand-500/10 px-2 py-1 rounded-lg">Flow</div>
           </div>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Net Cash Flow</p>
           <h3 className="text-2xl font-black">{formatCurrency(stats.netCashFlow, displayCurrency)}</h3>
@@ -351,27 +366,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Account Liquidity Distribution - RESTORED */}
+        {/* Account Distribution - Expanded for all types */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
             <div>
               <h3 className="text-xl font-bold text-gray-800">Account Distribution</h3>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Liquid Asset Breakdown</p>
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Asset Breakdown by Value</p>
             </div>
           </div>
           <div className="h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40 }}>
+              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={80} />
+                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={100} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={32}>
+                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={24}>
                   {accountBarData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
-                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '10px', fontWeight: '900', fill: '#475569'}} offset={10} />
+                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '9px', fontWeight: '900', fill: '#475569'}} offset={10} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -383,7 +398,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
             <div className="p-6 bg-white rounded-full shadow-lg mb-6"><Target size={40} className="text-brand-500"/></div>
             <h3 className="text-xl font-black text-slate-800 mb-2">Liquidity Score</h3>
             <p className="text-sm text-slate-500 max-w-xs font-medium leading-relaxed">
-              You are projected to have <span className="text-brand-600 font-bold">{formatCurrency(balanceHistory[balanceHistory.length-1]?.forecast || 0)}</span> available in 60 days.
+              You are projected to have <span className="text-brand-600 font-bold">{formatCurrency(balanceHistory[balanceHistory.length-1]?.forecast || balanceHistory[balanceHistory.length-1]?.balance || 0)}</span> available in 60 days.
             </p>
             <div className="mt-8 flex gap-4">
                 <button 
@@ -426,10 +441,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                 formatter={(v: number, name: string) => [formatCurrency(v, displayCurrency), name]} 
               />
               <ReferenceLine x="Today" stroke="#94a3b8" strokeDasharray="3 3" />
-              <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" />
-              <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" />
-              {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash')).map(acc => (
-                <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} />
+              <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" isAnimationActive={false} />
+              <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" isAnimationActive={false} />
+              {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash'||a.type==='savings')).map(acc => (
+                <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} isAnimationActive={false} />
               ))}
             </AreaChart>
           </ResponsiveContainer>

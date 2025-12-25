@@ -12,33 +12,23 @@ declare global {
   }
 
   interface Window {
-    // Fixed: Added optional modifier to resolve modifier mismatch error with other global declarations
     aistudio?: AIStudio;
   }
 }
 
 /**
- * Robust helper to get the API key.
+ * Robust helper to check if the API key is present.
  */
-export const getApiKey = () => {
+export const hasValidApiKey = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey.length < 5) {
-    return null;
-  }
-  return apiKey;
+  return !!(apiKey && apiKey !== "undefined" && apiKey !== "" && apiKey.length > 5);
 };
 
+// Add getApiKey export to resolve the import error in Settings.tsx
 /**
- * Creates a fresh instance of the Gemini API client.
- * Strictly follows the guideline: new GoogleGenAI({ apiKey: process.env.API_KEY })
+ * Returns the current API key from environment variables.
  */
-const getFreshAi = () => {
-  const key = getApiKey();
-  if (!key) {
-    throw new Error("API_KEY_MISSING");
-  }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
-};
+export const getApiKey = () => process.env.API_KEY;
 
 /**
  * Clean model output that might contain Markdown wrappers.
@@ -55,7 +45,9 @@ const cleanJsonResponse = (text: string): string => {
  */
 export const categorizeTransaction = async (payee: string, amount: number, existingCategories: string[] = []): Promise<string> => {
   try {
-    const ai = getFreshAi();
+    if (!hasValidApiKey()) return "כללי";
+    
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const categoriesList = existingCategories.length > 0 
       ? `בחר את הקטגוריה המתאימה ביותר מהרשימה הבאה: [${existingCategories.join(', ')}]. אם אף אחת לא מתאימה, צור קטגוריה חדשה במילה אחת בעברית.` 
       : `קטלג את התנועה הזו למילה אחת קצרה בעברית (למשל: 'מזון', 'חשמל', 'פנאי').`;
@@ -83,27 +75,25 @@ export const generateFinancialInsight = async (
   transactions: Transaction[],
   forecast: ForecastPoint[]
 ): Promise<string> => {
-  try {
-    const ai = getFreshAi();
-    const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
-    const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
-
-    const prompt = `נתח את הנתונים הפיננסיים הבאים וספק 2-3 תובנות או טיפים מותאמים אישית בעברית.\nתנועות אחרונות:\n${recentTxsSummary}\nתחזית יתרה עתידית:\n${forecastSummary}`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: "אתה יועץ פיננסי מקצועי המומחה בניהול תקציב ותזרים מזומנים. השב בעברית בלבד תוך שימוש בפורמט Markdown נקי וקריא.",
-      }
-    });
-    
-    return response.text || "לא ניתן היה לייצר תובנות כרגע.";
-  } catch (error: any) {
-    console.error("AI Insight Generation failed:", error);
-    if (error.message === "API_KEY_MISSING") throw error;
-    return "שגיאה בייצור תובנות AI.";
+  if (!hasValidApiKey()) {
+    throw new Error("API_KEY_MISSING");
   }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
+  const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
+
+  const prompt = `נתח את הנתונים הפיננסיים הבאים וספק 2-3 תובנות או טיפים מותאמים אישית בעברית.\nתנועות אחרונות:\n${recentTxsSummary}\nתחזית יתרה עתידית:\n${forecastSummary}`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: {
+      systemInstruction: "אתה יועץ פיננסי מקצועי המומחה בניהול תקציב ותזרים מזומנים. השב בעברית בלבד תוך שימוש בפורמט Markdown נקי וקריא.",
+    }
+  });
+  
+  return response.text || "לא ניתן היה לייצר תובנות כרגע.";
 };
 
 /**
@@ -111,7 +101,9 @@ export const generateFinancialInsight = async (
  */
 export const analyzeAnomalies = async (transactions: Transaction[]): Promise<string[]> => {
   try {
-    const ai = getFreshAi();
+    if (!hasValidApiKey()) return [];
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const recent = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -143,7 +135,11 @@ export const createFinancialChatSession = (
   recurring: RecurringTransaction[],
   accounts: Account[]
 ): Chat => {
-  const ai = getFreshAi();
+  if (!hasValidApiKey()) {
+    throw new Error("API_KEY_MISSING");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const accountSummary = accounts.map(a => `- ${a.name} (${a.type}): ${a.currency} ${a.initialBalance}`).join('\n');
   const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount} (${r.frequency})`).join('\n');
   const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
