@@ -243,9 +243,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [ruleValue, setRuleValue] = useState('');
   const [ruleCategory, setRuleCategory] = useState('');
 
+  const isRulesTableMissing = useMemo(() => tableHealth.transaction_rules === false, [tableHealth]);
+
   useEffect(() => { 
     loadSubTypes(); 
-    if (activeTab === 'db') refreshHealth();
+    refreshHealth();
   }, [activeTab]);
 
   const loadSubTypes = async () => { const subs = await fetchAccountSubTypes(); setAvailableSubTypes(subs); };
@@ -330,6 +332,10 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleSaveRule = async () => {
+    if (isRulesTableMissing) {
+        alert("Action Blocked: The 'transaction_rules' table is missing. Go to the 'Database' tab and run the patch script first.");
+        return;
+    }
     if (!rulePattern || !ruleCategory || isSaving) return;
     setIsSaving(true);
     try {
@@ -558,75 +564,88 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {activeTab === 'rules' && (
           <div className="space-y-6">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                  <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Zap className="text-brand-500"/>{isEditingRule ? 'Edit' : 'Add'} Categorization Rule</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                      <div className="md:col-span-1">
-                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payee Contains</label>
-                          <input type="text" value={rulePattern} onChange={e=>setRulePattern(e.target.value)} placeholder="e.g. Yellow" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
-                      </div>
-                      <div>
-                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Rule</label>
-                          <select value={ruleCondition} onChange={e=>setRuleCondition(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                              <option value="any">Any Amount</option>
-                              <option value="less">Less Than (&lt;)</option>
-                              <option value="greater">Greater Than (&gt;)</option>
-                              <option value="equal">Exactly Equals (=)</option>
-                          </select>
-                      </div>
-                      {ruleCondition !== 'any' && (
-                          <div>
-                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Value</label>
-                              <input type="number" value={ruleValue} onChange={e=>setRuleValue(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
-                          </div>
-                      )}
-                      <div>
-                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Assign Category</label>
-                          <select value={ruleCategory} onChange={e=>setRuleCategory(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                      </div>
-                  </div>
-                  <div className="mt-8 flex gap-4 pt-8 border-t border-slate-50">
-                      <button onClick={handleSaveRule} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
-                          {isSaving && <Loader size={16} className="animate-spin" />}
-                          {isEditingRule ? 'Update Rule' : 'Create Rule'}
+              {isRulesTableMissing ? (
+                  <div className="bg-amber-50 border border-amber-200 p-8 rounded-[2.5rem] flex flex-col items-center text-center animate-fade-in">
+                      <div className="p-5 bg-amber-100 text-amber-600 rounded-3xl mb-6 shadow-sm"><AlertCircle size={48}/></div>
+                      <h3 className="text-2xl font-black text-amber-900">Rule Engine Not Initialized</h3>
+                      <p className="text-amber-800 font-medium max-w-md mt-2 mb-8">The "transaction_rules" table is missing from your database. You need to run the Repair Script to use the memorized transaction engine.</p>
+                      <button onClick={() => setActiveTab('db')} className="bg-amber-600 hover:bg-amber-700 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 uppercase tracking-widest text-xs">
+                          Go to Database Tab
                       </button>
-                      {isEditingRule && <button onClick={resetRuleForm} className="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
                   </div>
-              </div>
+              ) : (
+                <>
+                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                      <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Zap className="text-brand-500"/>{isEditingRule ? 'Edit' : 'Add'} Categorization Rule</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                          <div className="md:col-span-1">
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payee Contains</label>
+                              <input type="text" value={rulePattern} onChange={e=>setRulePattern(e.target.value)} placeholder="e.g. Yellow" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
+                          </div>
+                          <div>
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Rule</label>
+                              <select value={ruleCondition} onChange={e=>setRuleCondition(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                                  <option value="any">Any Amount</option>
+                                  <option value="less">Less Than (&lt;)</option>
+                                  <option value="greater">Greater Than (&gt;)</option>
+                                  <option value="equal">Exactly Equals (=)</option>
+                              </select>
+                          </div>
+                          {ruleCondition !== 'any' && (
+                              <div>
+                                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Value</label>
+                                  <input type="number" value={ruleValue} onChange={e=>setRuleValue(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
+                              </div>
+                          )}
+                          <div>
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Assign Category</label>
+                              <select value={ruleCategory} onChange={e=>setRuleCategory(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                          </div>
+                      </div>
+                      <div className="mt-8 flex gap-4 pt-8 border-t border-slate-50">
+                          <button onClick={handleSaveRule} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
+                              {isSaving && <Loader size={16} className="animate-spin" />}
+                              {isEditingRule ? 'Update Rule' : 'Create Rule'}
+                          </button>
+                          {isEditingRule && <button onClick={resetRuleForm} className="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
+                      </div>
+                  </div>
 
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {rules.map(rule => (
-                      <div key={rule.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
-                          <div className="flex justify-between items-start mb-6">
-                              <div className="flex items-center gap-3">
-                                  <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><Zap size={20}/></div>
-                                  <div>
-                                      <div className="font-black text-slate-800">"{rule.payeePattern}"</div>
-                                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                          If {rule.amountCondition === 'any' ? 'any amount' : `${rule.amountCondition} ${rule.amountValue}`}
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {rules.map(rule => (
+                          <div key={rule.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
+                              <div className="flex justify-between items-start mb-6">
+                                  <div className="flex items-center gap-3">
+                                      <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><Zap size={20}/></div>
+                                      <div>
+                                          <div className="font-black text-slate-800">"{rule.payeePattern}"</div>
+                                          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                              If {rule.amountCondition === 'any' ? 'any amount' : `${rule.amountCondition} ${rule.amountValue}`}
+                                          </div>
                                       </div>
                                   </div>
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={()=>handleEditRule(rule)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl"><Edit2 size={16}/></button>
+                                      <button onClick={()=>onDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"><Trash2 size={16}/></button>
+                                  </div>
                               </div>
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={()=>handleEditRule(rule)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl"><Edit2 size={16}/></button>
-                                  <button onClick={()=>onDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"><Trash2 size={16}/></button>
+                              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</span>
+                                  <span className="text-xs font-black text-brand-600">→ {rule.category}</span>
                               </div>
                           </div>
-                          <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</span>
-                              <span className="text-xs font-black text-brand-600">→ {rule.category}</span>
-                          </div>
-                      </div>
-                  ))}
-                  {rules.length === 0 && (
-                    <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-300 bg-gray-50/50 rounded-[2.5rem] border-4 border-dashed border-gray-100">
-                        <Zap size={48} className="mb-4 opacity-20"/>
-                        <p className="font-black uppercase tracking-widest text-xs">No transaction rules defined yet.</p>
-                    </div>
-                  )}
-              </div>
+                      ))}
+                      {rules.length === 0 && (
+                        <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-300 bg-gray-50/50 rounded-[2.5rem] border-4 border-dashed border-gray-100">
+                            <Zap size={48} className="mb-4 opacity-20"/>
+                            <p className="font-black uppercase tracking-widest text-xs">No transaction rules defined yet.</p>
+                        </div>
+                      )}
+                  </div>
+                </>
+              )}
           </div>
       )}
 
@@ -709,7 +728,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="bg-amber-50 p-4 rounded-xl flex gap-3 items-start border border-amber-100">
                         <AlertTriangle size={18} className="text-amber-600 mt-0.5 shrink-0"/>
                         <p className="text-xs font-medium text-amber-800 leading-relaxed">
-                            <strong>Fix PGRST204 Error:</strong> If you see "interest_rate column not found", simply copy the script above, go to your <strong>Supabase Dashboard -> SQL Editor</strong>, paste it, and click <strong>Run</strong>. This adds the new columns without affecting your data.
+                            <strong>Fix PGRST204/205 Error:</strong> If you see "table not found" or "column not found", copy the script above, go to your <strong>Supabase Dashboard -> SQL Editor</strong>, paste it, and click <strong>Run</strong>. This will initialize any missing features without affecting existing data.
                         </p>
                     </div>
                 </div>

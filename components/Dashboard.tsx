@@ -5,11 +5,13 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2, AlertTriangle, ArrowRight, X } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies } from '../services/geminiService';
+
+const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -24,6 +26,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [showIndividualLines, setShowIndividualLines] = useState(true);
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  // Initialize dismissed alerts from localStorage for persistence
+  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
+    const stored = localStorage.getItem(DISMISSED_ALERTS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  });
 
   useEffect(() => {
     if (transactions.length > 0) {
@@ -36,8 +44,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   }, [transactions.length]);
 
   const balanceAlerts = useMemo(() => {
-    return calculateBalanceAlerts(accounts, transactions, recurring);
-  }, [accounts, transactions, recurring]);
+    const rawAlerts = calculateBalanceAlerts(accounts, transactions, recurring);
+    // Filter out alerts that the user has dismissed
+    return rawAlerts.filter(alert => !dismissedAlerts.includes(`${alert.accountId}-${alert.date}`));
+  }, [accounts, transactions, recurring, dismissedAlerts]);
+
+  const handleDismissAlert = (accountId: string, date: string) => {
+    const alertId = `${accountId}-${date}`;
+    const updated = [...dismissedAlerts, alertId];
+    setDismissedAlerts(updated);
+    localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(updated));
+  };
 
   const displayCurrency = selectedAccountId 
      ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
@@ -184,9 +201,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       {balanceAlerts.length > 0 && (
         <div className="space-y-3">
           {balanceAlerts.map((alert, i) => (
-            <div key={i} className={`p-4 rounded-2xl border flex items-center justify-between gap-4 shadow-sm animate-pulse ${alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              <div className="flex items-center gap-4">
-                <div className={`p-2 rounded-xl ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+            <div key={`${alert.accountId}-${alert.date}`} className={`p-4 rounded-2xl border flex items-center justify-between gap-4 shadow-sm animate-fade-in ${alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <div className="flex items-center gap-4 flex-1">
+                <div className={`p-2 rounded-xl shrink-0 ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
                    <AlertTriangle size={24}/>
                 </div>
                 <div>
@@ -197,12 +214,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                    </p>
                 </div>
               </div>
-              <button 
-                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forecast' }))}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all whitespace-nowrap ${alert.severity === 'critical' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-amber-600 text-white hover:bg-amber-700'}`}
-              >
-                Model Solutions <ArrowRight size={14}/>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forecast' }))}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all whitespace-nowrap ${alert.severity === 'critical' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-amber-600 text-white hover:bg-amber-700'}`}
+                >
+                  Model Solutions <ArrowRight size={14}/>
+                </button>
+                <button 
+                  onClick={() => handleDismissAlert(alert.accountId, alert.date)}
+                  className={`p-2 rounded-xl transition-all ${alert.severity === 'critical' ? 'hover:bg-red-200 text-red-400' : 'hover:bg-amber-200 text-amber-400'}`}
+                  title="Dismiss alert"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

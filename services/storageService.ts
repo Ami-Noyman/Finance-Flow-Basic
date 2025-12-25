@@ -55,17 +55,20 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
         const result = await query;
         if (result.error) {
             const error = result.error;
+            // PGRST205: Missing table, 42P01: Relation does not exist
             const isSchemaError = ['42P01', 'PGRST204', 'PGRST205'].includes(error.code);
             if (isSchemaError) {
-                console.warn(`SafeFetch: Skipping ${tableName} due to schema mismatch (${error.code})`);
+                console.warn(`Supabase: Table '${tableName}' is not yet initialized in the DB. Returning empty array.`);
                 return []; 
             }
             throw error;
         }
         return (result.data || []).map(mapper);
     } catch (e: any) {
-        const errStr = stringifyAny(e);
-        console.error(`Error fetching from ${tableName}:`, errStr);
+        const isSchemaError = e.code && ['42P01', 'PGRST204', 'PGRST205'].includes(e.code);
+        if (!isSchemaError) {
+            console.error(`Fetch error in ${tableName}:`, stringifyAny(e));
+        }
         return [];
     }
 }
@@ -78,9 +81,13 @@ export const checkTableHealth = async (): Promise<Record<string, boolean>> => {
 
     try {
         await Promise.all(tables.map(async (table) => {
-            const { error } = await supabase.from(table).select('id').limit(1);
-            const isError = error && (['42P01', 'PGRST204', 'PGRST205'].includes(error.code));
-            health[table] = !isError;
+            try {
+                const { error } = await supabase.from(table).select('id').limit(1);
+                const isError = error && (['42P01', 'PGRST204', 'PGRST205'].includes(error.code));
+                health[table] = !isError;
+            } catch (e) {
+                health[table] = false;
+            }
         }));
     } catch (e) {
         return {};
@@ -131,6 +138,25 @@ const accountToDb = (a: Account, userId: string) => {
     
     return payload;
 };
+
+const mapRule = (row: any): TransactionRule => ({
+    id: row.id,
+    payeePattern: row.payee_pattern,
+    amountCondition: row.amount_condition,
+    amountValue: row.amount_value ? Number(row.amount_value) : undefined,
+    category: row.category,
+    isActive: row.is_active,
+});
+
+const ruleToDb = (rule: TransactionRule, userId: string) => ({
+    id: rule.id,
+    user_id: userId,
+    payee_pattern: rule.payeePattern,
+    amount_condition: rule.amountCondition,
+    amount_value: rule.amountValue || null,
+    category: rule.category,
+    is_active: rule.isActive,
+});
 
 const mapTransaction = (row: any): Transaction => ({
     id: row.id,
@@ -265,25 +291,6 @@ const goalToDb = (g: FinancialGoal, userId: string) => ({
   color: g.color,
   account_id: g.accountId || null,
   is_active: g.isActive,
-});
-
-const mapRule = (row: any): TransactionRule => ({
-    id: row.id,
-    payeePattern: row.payee_pattern,
-    amountCondition: row.amount_condition,
-    amountValue: row.amount_value ? Number(row.amount_value) : undefined,
-    category: row.category,
-    isActive: row.is_active,
-});
-
-const ruleToDb = (rule: TransactionRule, userId: string) => ({
-    id: rule.id,
-    user_id: userId,
-    payee_pattern: rule.payeePattern,
-    amount_condition: rule.amountCondition,
-    amount_value: rule.amountValue || null,
-    category: rule.category,
-    is_active: rule.isActive,
 });
 
 export const fetchAccounts = async (uid?: string): Promise<Account[]> => {

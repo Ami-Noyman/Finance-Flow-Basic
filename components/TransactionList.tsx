@@ -62,7 +62,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
 
-  // Apply Rules Logic
+  // Apply Rules Logic - Fixed to clear category when rule no longer matches
   useEffect(() => {
     if (!payee || !amount || editingId) return;
     const numAmt = parseFloat(amount);
@@ -86,10 +86,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     if (matchedRule) {
         setCategory(matchedRule.category);
         setRuleUsed(true);
-    } else {
+    } else if (ruleUsed) {
+        // If a rule was previously used but now doesn't match, clear the category 
+        // to let the user or Gemini decide.
+        setCategory('');
         setRuleUsed(false);
     }
-  }, [payee, amount, rules, editingId]);
+  }, [payee, amount, rules, editingId, ruleUsed]);
 
   const getPayee = (t: any) => t.payee || t.description || '';
 
