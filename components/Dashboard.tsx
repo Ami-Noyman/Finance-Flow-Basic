@@ -5,14 +5,13 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain, Database, Server, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies, getApiKey } from '../services/geminiService';
 import { checkTableHealth } from '../services/storageService';
 
-// Use sessionStorage so alerts reset when the session ends or user logs out
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
 
 interface DashboardProps {
@@ -351,20 +350,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
-      {/* Liquidity Trend */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Account Liquidity Distribution - RESTORED */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-800">Account Distribution</h3>
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Liquid Asset Breakdown</p>
+            </div>
+          </div>
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={80} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
+                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={32}>
+                  {accountBarData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '10px', fontWeight: '900', fill: '#475569'}} offset={10} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Predictive Snapshot */}
+        <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-gray-200 flex flex-col justify-center items-center text-center">
+            <div className="p-6 bg-white rounded-full shadow-lg mb-6"><Target size={40} className="text-brand-500"/></div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Liquidity Score</h3>
+            <p className="text-sm text-slate-500 max-w-xs font-medium leading-relaxed">
+              You are projected to have <span className="text-brand-600 font-bold">{formatCurrency(balanceHistory[balanceHistory.length-1]?.forecast || 0)}</span> available in 60 days.
+            </p>
+            <div className="mt-8 flex gap-4">
+                <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forecast' }))}
+                  className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-slate-800 transition-all"
+                >
+                  View Full Forecast <ArrowRight size={14}/>
+                </button>
+            </div>
+        </div>
+      </div>
+
+      {/* Liquidity Trend Area Chart */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-8">
           <div className="space-y-1">
             <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Activity size={22} className="text-brand-500"/>Liquidity Trend</h3>
             {!selectedAccountId && (
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1"><Info size={10}/> Consolidated Liquidity View</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1"><Info size={10}/> Consolidated Liquidity View (Past 30d / Future 60d)</p>
             )}
           </div>
           <button onClick={() => setShowIndividualLines(!showIndividualLines)} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border transition-all ${showIndividualLines ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
             {showIndividualLines ? 'Hide Account Details' : 'Show Account Details'}
           </button>
         </div>
-        <div className="h-[350px]">
+        <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={balanceHistory}>
               <defs>

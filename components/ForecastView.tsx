@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ComposedChart, BarChart, Bar, LabelList } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, Frequency } from '../types';
-import { generateFinancialInsight, createFinancialChatSession } from '../services/geminiService';
-import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard } from 'lucide-react';
+import { generateFinancialInsight, createFinancialChatSession, getApiKey } from '../services/geminiService';
+import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard, AlertCircle } from 'lucide-react';
 import { addDays, format, parseISO, startOfDay, isSameDay, startOfMonth, endOfMonth, differenceInDays, addMonths, isBefore, addWeeks, addYears } from 'date-fns';
 import { formatCurrency } from '../utils/currency';
 import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget } from '../utils/finance';
@@ -64,6 +64,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
   const [activeAiTab, setActiveAiTab] = useState<'insight' | 'chat'>('insight');
   const [period, setPeriod] = useState<ForecastPeriod>('6m');
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [showScenariosPanel, setShowScenariosPanel] = useState(false);
 
   const [scenarios, setScenarios] = useState<Scenario[]>([
@@ -232,7 +233,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                   if (t.type === TransactionType.INCOME) scenarioCheckingBalances[s.id] += t.amount;
                   else scenarioCheckingBalances[s.id] -= t.amount * reduction;
               }
-              if (t.toAccountId && checkingAccountIds.includes(t.toAccountId)) scenarioCheckingBalances[s.id] += t.amount;
+              if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) scenarioCheckingBalances[s.id] += t.amount;
           });
 
           scenarioRecs[s.id].forEach(r => {
@@ -251,7 +252,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                       if (r.type === TransactionType.INCOME) scenarioCheckingBalances[s.id] += scenarioAmt; 
                       else scenarioCheckingBalances[s.id] -= scenarioAmt * reduction; 
                   }
-                  if (r.toAccountId && checkingAccountIds.includes(r.toAccountId)) scenarioCheckingBalances[s.id] += scenarioAmt;
+                  if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) scenarioCheckingBalances[s.id] += scenarioAmt;
 
                   r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
               }
@@ -295,29 +296,54 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
+    
+    if (!getApiKey()) {
+      alert("מפתח API חסר. נא להגדיר API_KEY בהגדרות או במשתני הסביבה.");
+      return;
+    }
+
     const userMsg = chatInput.trim();
     setChatInput('');
     const newMessages: ChatMessage[] = [...persistentChatMessages, { role: 'user', text: userMsg }];
     if (onUpdateChatMessages) onUpdateChatMessages(newMessages);
     setIsChatLoading(true);
     try {
-      // Re-initialize session if it doesn't exist or key might have updated
       if (!chatSessionRef?.current) {
           if (chatSessionRef) chatSessionRef.current = createFinancialChatSession(transactions, recurring, accounts);
       }
       
       const session = chatSessionRef?.current;
-      if (!session) throw new Error("Could not create AI session. Key might be missing.");
+      if (!session) throw new Error("Could not create AI session.");
 
       const result = await session.sendMessage({ message: userMsg });
       const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result.text || 'לא התקבלה תגובה מהיועץ.' }];
       if (onUpdateChatMessages) onUpdateChatMessages(finalMessages);
     } catch (e: any) {
       console.error("AI Advisor Messaging Error:", e);
-      const errorMsg = e.message?.includes("API_KEY") ? "שגיאת מפתח API. וודא שהגדרת את המפתח בשרת." : "שגיאה בתקשורת עם הבינה המלאכותית.";
+      let errorMsg = "שגיאה בתקשורת עם הבינה המלאכותית.";
+      if (e.message === "API_KEY_MISSING") errorMsg = "מפתח API (API_KEY) חסר במערכת. נא להגדיר ב-Vercel Environment Variables.";
+      
       if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: errorMsg }]);
     } finally {
       setIsChatLoading(false);
+    }
+  };
+
+  const handleGenerateInsight = async () => {
+    setIsLoadingInsight(true);
+    setAiError(null);
+    try {
+        const res = await generateFinancialInsight(transactions, forecastData);
+        setInsight(res);
+    } catch (e: any) {
+        console.error(e);
+        if (e.message === "API_KEY_MISSING") {
+            setAiError("מפתח API (API_KEY) חסר במערכת. יש להגדיר אותו בהגדרות Vercel כדי להפעיל תכונות AI.");
+        } else {
+            setAiError("אירעה שגיאה בייצור התובנות. נסה שוב מאוחר יותר.");
+        }
+    } finally {
+        setIsLoadingInsight(false);
     }
   };
 
@@ -354,7 +380,35 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                         <div className="p-4 bg-orange-50 text-orange-600 rounded-3xl"><Activity size={32}/></div>
                         <div><h2 className="text-2xl font-black text-slate-800">Smart Financial Analysis</h2></div>
                     </div>
-                    {isLoadingInsight ? <div className="flex flex-col items-center justify-center py-20 gap-4"><Loader size={48} className="animate-spin text-orange-600"/></div> : insight ? <div className="whitespace-pre-wrap leading-relaxed text-slate-700 bg-slate-50 p-6 rounded-2xl">{insight}</div> : <button onClick={() => { setInsight(null); setIsLoadingInsight(true); generateFinancialInsight(transactions, forecastData).then(res => { setInsight(res); setIsLoadingInsight(false); }); }} className="bg-orange-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl mx-auto">Generate Insight</button>}
+                    
+                    {aiError && (
+                        <div className="bg-red-50 border border-red-100 p-6 rounded-2xl flex items-start gap-4 mb-8 text-red-800">
+                            <AlertCircle className="shrink-0 mt-0.5" size={24}/>
+                            <div className="font-bold">{aiError}</div>
+                        </div>
+                    )}
+
+                    {isLoadingInsight ? (
+                        <div className="flex flex-col items-center justify-center py-20 gap-4">
+                            <Loader size={48} className="animate-spin text-orange-600"/>
+                            <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Generating deep analysis...</p>
+                        </div>
+                    ) : insight ? (
+                        <div className="whitespace-pre-wrap leading-relaxed text-slate-700 bg-slate-50 p-6 rounded-2xl shadow-inner border border-slate-100 prose prose-slate max-w-none prose-sm">
+                            {insight}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-20 gap-6 border-2 border-dashed border-slate-100 rounded-[2.5rem]">
+                            <Sparkles size={64} className="text-orange-200" />
+                            <div className="text-center space-y-2">
+                                <h3 className="text-xl font-black text-slate-800">Ready for insights?</h3>
+                                <p className="text-slate-500 font-medium">Click below to let AI analyze your 24-month trajectory.</p>
+                            </div>
+                            <button onClick={handleGenerateInsight} className="bg-orange-600 hover:bg-orange-700 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-orange-500/20 transition-all active:scale-95 flex items-center gap-3">
+                                <Sparkles size={20}/> Generate Insight
+                            </button>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
@@ -362,29 +416,39 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                         {persistentChatMessages.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
                                 <Bot size={48} className="opacity-20"/>
-                                <p className="text-sm font-medium">Ask me anything about your finances.</p>
+                                <p className="text-sm font-medium">שאל אותי כל דבר על המצב הפיננסי שלך.</p>
+                                <div className="flex flex-wrap gap-2 justify-center max-w-sm">
+                                    {["מה המצב שלי החודש?", "האם יש לי חריגות?", "מה התחזית לעוד 3 חודשים?"].map(s => (
+                                        <button key={s} onClick={() => setChatInput(s)} className="bg-white border border-slate-200 px-3 py-1.5 rounded-full text-[10px] font-black hover:bg-brand-50 hover:border-brand-200 transition-all">{s}</button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         {persistentChatMessages.map((msg, i) => (
                             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm text-sm font-medium ${msg.role === 'user' ? 'bg-orange-600 text-white' : 'bg-white text-slate-700'}`}>
+                                <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm text-sm font-medium ${msg.role === 'user' ? 'bg-orange-600 text-white rounded-tr-none' : 'bg-white text-slate-700 rounded-tl-none border border-slate-100'}`}>
                                     <div className="whitespace-pre-wrap text-right" dir="rtl">{msg.text}</div>
                                 </div>
                             </div>
                         ))}
                         {isChatLoading && (
                             <div className="flex justify-start">
-                                <div className="bg-white p-4 rounded-2xl shadow-sm">
-                                    <div className="flex gap-1">
-                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
-                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce delay-75"></div>
-                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce delay-150"></div>
+                                <div className="bg-white p-4 rounded-2xl shadow-sm rounded-tl-none border border-slate-100">
+                                    <div className="flex gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce delay-150"></div>
                                     </div>
                                 </div>
                             </div>
                         )}
                     </div>
-                    <form onSubmit={handleSendMessage} className="p-6 bg-white border-t flex gap-3"><input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask a financial question..." className="flex-1 p-4 bg-slate-50 border rounded-2xl text-right" dir="rtl" /><button type="submit" disabled={isChatLoading} className="bg-orange-600 text-white p-4 rounded-2xl shadow-lg hover:bg-orange-700 transition-colors disabled:opacity-50"><Send size={20}/></button></form>
+                    <form onSubmit={handleSendMessage} className="p-6 bg-white border-t flex gap-3">
+                        <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="שאל שאלה פיננסית..." className="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-right focus:ring-4 focus:ring-orange-500/10 outline-none font-medium" dir="rtl" />
+                        <button type="submit" disabled={isChatLoading || !chatInput.trim()} className="bg-orange-600 text-white p-4 rounded-2xl shadow-lg hover:bg-orange-700 transition-colors disabled:opacity-50 active:scale-95">
+                            <Send size={20}/>
+                        </button>
+                    </form>
                 </div>
             )}
         </div>

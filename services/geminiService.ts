@@ -12,14 +12,13 @@ declare global {
   }
 
   interface Window {
-    // FIX: Removed readonly to ensure compatibility with existing global definitions in the environment
-    aistudio: AIStudio;
+    // Fixed: Added optional modifier to resolve modifier mismatch error with other global declarations
+    aistudio?: AIStudio;
   }
 }
 
 /**
  * Robust helper to get the API key.
- * Prioritizes process.env.API_KEY (injected at build time by Vite define).
  */
 export const getApiKey = () => {
   const apiKey = process.env.API_KEY;
@@ -31,12 +30,12 @@ export const getApiKey = () => {
 
 /**
  * Creates a fresh instance of the Gemini API client.
- * Strictly follows the guideline to use the direct process.env variable name.
+ * Strictly follows the guideline: new GoogleGenAI({ apiKey: process.env.API_KEY })
  */
 const getFreshAi = () => {
   const key = getApiKey();
   if (!key) {
-    throw new Error("Gemini API key is missing or invalid. Check Vercel environment variables.");
+    throw new Error("API_KEY_MISSING");
   }
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -72,7 +71,7 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
     
     return response.text?.trim() || "כללי";
   } catch (error: any) {
-    console.error("AI Transaction Categorization failed:", error);
+    console.error("AI Categorization failed:", error);
     return "כללי"; 
   }
 };
@@ -102,7 +101,8 @@ export const generateFinancialInsight = async (
     return response.text || "לא ניתן היה לייצר תובנות כרגע.";
   } catch (error: any) {
     console.error("AI Insight Generation failed:", error);
-    return "שגיאה בייצור תובנות AI. בדוק את חיבור ה-API בקונסול.";
+    if (error.message === "API_KEY_MISSING") throw error;
+    return "שגיאה בייצור תובנות AI.";
   }
 };
 
