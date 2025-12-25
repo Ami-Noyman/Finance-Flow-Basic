@@ -1,65 +1,62 @@
 
 import { GoogleGenAI, Chat, Type } from "@google/genai";
-import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
-
-/**
- * Interface for AI Studio external key management.
- */
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-
-  interface Window {
-    aistudio?: AIStudio;
-  }
-}
+import { Transaction, RecurringTransaction, ForecastPoint, Account, TransactionRule } from '../types';
 
 /**
  * Robust helper to check if the API key is present.
- * In Vercel, process.env might be replaced by the build engine.
  */
 export const hasValidApiKey = () => {
   const apiKey = process.env.API_KEY;
   return typeof apiKey === 'string' && apiKey !== "" && apiKey !== "undefined" && apiKey.length > 5;
 };
 
-/**
- * Returns the current API key from environment variables.
- */
 export const getApiKey = () => process.env.API_KEY;
 
-/**
- * Clean model output that might contain Markdown wrappers.
- */
 const cleanJsonResponse = (text: string): string => {
-  return text
-    .replace(/```json/g, '')
-    .replace(/```/g, '')
-    .trim();
+  return text.replace(/```json/g, '').replace(/```/g, '').trim();
 };
 
 /**
- * Categorizes a transaction into Hebrew using Gemini 3 Flash.
+ * SMART CATEGORIZATION ENGINE
+ * 1. Checks manual rules
+ * 2. Checks historical transactions (Learning from DB)
+ * 3. Calls Gemini AI only if payee is unknown
  */
-export const categorizeTransaction = async (payee: string, amount: number, existingCategories: string[] = []): Promise<string> => {
+export const categorizeTransaction = async (
+  payee: string, 
+  amount: number, 
+  history: Transaction[], 
+  rules: TransactionRule[],
+  existingCategories: string[] = []
+): Promise<string> => {
+  const normalizedPayee = payee.toLowerCase().trim();
+
+  // LAYER 1: Check Manual Rules
+  const matchedRule = rules.find(r => r.isActive && normalizedPayee.includes(r.payeePattern.toLowerCase()));
+  if (matchedRule) return matchedRule.category;
+
+  // LAYER 2: Check History (Learn from Database)
+  // Find the most frequent category used for this payee in the past
+  const pastMatches = history.filter(t => (t.payee || "").toLowerCase().trim() === normalizedPayee);
+  if (pastMatches.length > 0) {
+    const counts: Record<string, number> = {};
+    pastMatches.forEach(m => counts[m.category] = (counts[m.category] || 0) + 1);
+    const topCategory = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    return topCategory;
+  }
+
+  // LAYER 3: Call AI (Only for brand new payees)
   try {
     if (!hasValidApiKey()) return "כללי";
     
-    // Explicit initialization inside scope for better environment variable reliability
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
     const categoriesList = existingCategories.length > 0 
-      ? `בחר את הקטגוריה המתאימה ביותר מהרשימה הבאה: [${existingCategories.join(', ')}]. אם אף אחת לא מתאימה, צור קטגוריה חדשה במילה אחת בעברית.` 
-      : `קטלג את התנועה הזו למילה אחת קצרה בעברית (למשל: 'מזון', 'חשמל', 'פנאי').`;
+      ? `בחר מהרשימה: [${existingCategories.join(', ')}]. אם אין התאמה, צור חדשה בעברית.` 
+      : `קטלג למילה אחת בעברית.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `משימה: קטלג הוצאה פיננסית לעברית.
-      בית עסק: "${payee}"
-      סכום: ${amount}
-      הנחיות: ${categoriesList}
-      פלט: החזר רק את שם הקטגוריה בעברית, ללא הסברים נוספים.`,
+      contents: `קטלג הוצאה: "${payee}" (${amount} ש"ח). ${categoriesList}. החזר רק את שם הקטגוריה.`,
     });
     
     return response.text?.trim() || "כללי";
@@ -69,16 +66,8 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
   }
 };
 
-/**
- * Generates summary insights from financial history and forecasts.
- */
-export const generateFinancialInsight = async (
-  transactions: Transaction[],
-  forecast: ForecastPoint[]
-): Promise<string> => {
-  if (!hasValidApiKey()) {
-    throw new Error("API_KEY_MISSING");
-  }
+export const generateFinancialInsight = async (transactions: Transaction[], forecast: ForecastPoint[]): Promise<string> => {
+  if (!hasValidApiKey()) throw new Error("API_KEY_MISSING");
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
@@ -97,9 +86,6 @@ export const generateFinancialInsight = async (
   return response.text || "לא ניתן היה לייצר תובנות כרגע.";
 };
 
-/**
- * Scans recent transactions for anomalies using structured JSON output.
- */
 export const analyzeAnomalies = async (transactions: Transaction[]): Promise<string[]> => {
   try {
     if (!hasValidApiKey()) return [];
@@ -108,9 +94,7 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
     const recent = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `מצא 2-3 חריגות פיננסיות בתנועות האלה (עליות מחירים, הוצאה גבוהה מהרגיל לקטגוריה). 
-      החזר מערך JSON של מחרוזות בעברית בלבד. היה קצר ותמציתי.
-      תנועות:\n${recent}`,
+      contents: `מצא 2-3 חריגות פיננסיות בתנועות האלה. החזר מערך JSON של מחרוזות בעברית.\nתנועות:\n${recent}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -128,32 +112,21 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
   }
 };
 
-/**
- * Initializes a conversational chat session with financial context.
- */
-export const createFinancialChatSession = (
-  transactions: Transaction[],
-  recurring: RecurringTransaction[],
-  accounts: Account[]
-): Chat => {
-  if (!hasValidApiKey()) {
-    throw new Error("API_KEY_MISSING");
-  }
+export const createFinancialChatSession = (transactions: Transaction[], recurring: RecurringTransaction[], accounts: Account[]): Chat => {
+  if (!hasValidApiKey()) throw new Error("API_KEY_MISSING");
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-  const accountSummary = accounts.map(a => `- ${a.name} (${a.type}): ${a.currency} ${a.initialBalance}`).join('\n');
-  const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount} (${r.frequency})`).join('\n');
+  const accountSummary = accounts.map(a => `- ${a.name}: ${a.currency} ${a.initialBalance}`).join('\n');
+  const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount}`).join('\n');
   const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
 
-  const systemInstruction = `אתה בוט פיננסי עוזר עבור אפליקציית FinanceFlow. השב תמיד בעברית.\nהקשר:\nחשבונות:\n${accountSummary}\nהתחייבויות קבועות:\n${recurringSummary}\n50 תנועות אחרונות:\n${recentTx}`;
+  const systemInstruction = `אתה בוט פיננסי עוזר עבור אפליקציית FinanceFlow. השב תמיד בעברית.\nקונטקסט:\nחשבונות:\n${accountSummary}\nהתחייבויות:\n${recurringSummary}\n50 תנועות אחרונות:\n${recentTx}`;
 
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: { 
       systemInstruction,
-      temperature: 0.7,
-      topK: 40,
-      topP: 0.95
+      temperature: 0.7
     }
   });
 };

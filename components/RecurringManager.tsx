@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { RecurringTransaction, TransactionType, Frequency, Account, AmountType, Transaction, SmartCategoryBudget } from '../types';
+import { RecurringTransaction, TransactionType, Frequency, Account, AmountType, Transaction, SmartCategoryBudget, TransactionRule } from '../types';
 import { Plus, Trash2, Calendar, Repeat, Edit2, Info, Clock, AlertCircle, X, CheckCircle, BrainCircuit, Target, StickyNote, PieChart as PieIcon, BarChart3, TrendingUp, ArrowRightLeft, Play, Filter, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react';
 import { categorizeTransaction } from '../services/geminiService';
 import { formatCurrency } from '../utils/currency';
@@ -12,6 +12,8 @@ interface RecurringManagerProps {
   categoryBudgets: SmartCategoryBudget[];
   accounts: Account[];
   categories: string[];
+  // Fixed: Added rules to props to enable layer 1 categorization
+  rules: TransactionRule[];
   transactions?: Transaction[];
   onAddRecurring: (r: RecurringTransaction) => void;
   onEditRecurring: (r: RecurringTransaction) => void;
@@ -28,6 +30,8 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   categoryBudgets,
   accounts,
   categories,
+  // Fixed: Destructured rules prop
+  rules,
   transactions = [],
   onAddRecurring,
   onEditRecurring,
@@ -127,7 +131,8 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     if (type === TransactionType.TRANSFER) {
         finalCategory = 'Transfer';
     } else if (!finalCategory) {
-        finalCategory = await categorizeTransaction(payee, parseFloat(amount), categories);
+        // Fixed: Added missing history (transactions) and rules arguments to satisfy categorizeTransaction signature
+        finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
     }
     
     const recData: RecurringTransaction = {
