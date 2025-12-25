@@ -728,7 +728,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="bg-amber-50 p-4 rounded-xl flex gap-3 items-start border border-amber-100">
                         <AlertTriangle size={18} className="text-amber-600 mt-0.5 shrink-0"/>
                         <p className="text-xs font-medium text-amber-800 leading-relaxed">
-                            <strong>Fix PGRST204/205 Error:</strong> If you see "table not found" or "column not found", copy the script above, go to your <strong>Supabase Dashboard -> SQL Editor</strong>, paste it, and click <strong>Run</strong>. This will initialize any missing features without affecting existing data.
+                            <strong>Fix PGRST204/205 Error:</strong> If you see "table not found" or "column not found", copy the script above, go to your <strong>Supabase Dashboard -&gt; SQL Editor</strong>, paste it, and click <strong>Run</strong>. This will initialize any missing features without affecting existing data.
                         </p>
                     </div>
                 </div>
