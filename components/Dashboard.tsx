@@ -5,7 +5,7 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2, AlertTriangle, ArrowRight, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
@@ -27,10 +27,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  // Initialize dismissed alerts from localStorage for persistence
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
-    const stored = localStorage.getItem(DISMISSED_ALERTS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem(DISMISSED_ALERTS_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
   });
 
   useEffect(() => {
@@ -45,7 +48,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   const balanceAlerts = useMemo(() => {
     const rawAlerts = calculateBalanceAlerts(accounts, transactions, recurring);
-    // Filter out alerts that the user has dismissed
     return rawAlerts.filter(alert => !dismissedAlerts.includes(`${alert.accountId}-${alert.date}`));
   }, [accounts, transactions, recurring, dismissedAlerts]);
 
@@ -196,11 +198,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
-      
-      {/* Predictive Alerts Banner */}
       {balanceAlerts.length > 0 && (
         <div className="space-y-3">
-          {balanceAlerts.map((alert, i) => (
+          {balanceAlerts.map((alert) => (
             <div key={`${alert.accountId}-${alert.date}`} className={`p-4 rounded-2xl border flex items-center justify-between gap-4 shadow-sm animate-fade-in ${alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
               <div className="flex items-center gap-4 flex-1">
                 <div className={`p-2 rounded-xl shrink-0 ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -234,7 +234,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
-      {/* Flash Insights Marquee */}
       {(anomalies.length > 0 || isAnalyzing) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
@@ -251,18 +250,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                        <AlertCircle size={14} className="text-orange-400"/> {a}
                     </span>
                   ))}
-                  {anomalies.map((a, i) => (
-                    <span key={`dup-${i}`} className="text-xs font-bold flex items-center gap-2">
-                       <AlertCircle size={14} className="text-orange-400"/> {a}
-                    </span>
-                  ))}
                 </div>
               )}
            </div>
         </div>
       )}
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-4">
@@ -296,7 +289,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
-      {/* Liquidity Trend */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-8">
           <div className="space-y-1">
@@ -336,7 +328,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
-      {/* Bottom Grid: Account Balances (Wider) & Savings Goals */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
               <h3 className="text-xl font-bold text-gray-800 mb-8 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>

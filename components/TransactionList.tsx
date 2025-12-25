@@ -37,7 +37,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   
-  // Filter States
   const [filterDateFrom, setFilterDateFrom] = useState(defaultStartDate);
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterMinAmount, setFilterMinAmount] = useState('');
@@ -45,7 +44,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
   
-  // Form States
   const [amount, setAmount] = useState('');
   const [payee, setPayee] = useState('');
   const [notes, setNotes] = useState('');
@@ -58,15 +56,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
   const [isReconciled, setIsReconciled] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
-  const [ruleUsed, setRuleUsed] = useState(false);
+  
+  const [appliedRuleId, setAppliedRuleId] = useState<string | null>(null);
 
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
 
-  // Apply Rules Logic - Fixed to clear category when rule no longer matches
   useEffect(() => {
     if (!payee || !amount || editingId) return;
+    
     const numAmt = parseFloat(amount);
-    if (isNaN(numAmt)) return;
+    if (isNaN(numAmt)) {
+        if (appliedRuleId) {
+            setCategory('');
+            setAppliedRuleId(null);
+        }
+        return;
+    }
 
     const matchedRule = rules.find(rule => {
         if (!rule.isActive) return false;
@@ -85,14 +90,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
     if (matchedRule) {
         setCategory(matchedRule.category);
-        setRuleUsed(true);
-    } else if (ruleUsed) {
-        // If a rule was previously used but now doesn't match, clear the category 
-        // to let the user or Gemini decide.
+        setAppliedRuleId(matchedRule.id);
+    } else if (appliedRuleId) {
         setCategory('');
-        setRuleUsed(false);
+        setAppliedRuleId(null);
     }
-  }, [payee, amount, rules, editingId, ruleUsed]);
+  }, [payee, amount, rules, editingId, appliedRuleId]);
 
   const getPayee = (t: any) => t.payee || t.description || '';
 
@@ -116,7 +119,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       setToAccountId(tx.toAccountId || '');
       setIsReconciled(tx.isReconciled || false);
       setMakeRecurring(false);
-      setRuleUsed(false);
+      setAppliedRuleId(null);
     } else {
       resetForm();
       if (selectedAccountId) setFormAccountId(selectedAccountId);
@@ -149,7 +152,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       amount: parseFloat(amount),
       payee,
       notes: notes.trim() || undefined,
-      category: finalCategory || 'Uncategorized',
+      category: finalCategory || 'כללי',
       type,
       accountId: formAccountId,
       toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
@@ -175,7 +178,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     setToAccountId('');
     setIsReconciled(false);
     setMakeRecurring(false);
-    setRuleUsed(false);
+    setAppliedRuleId(null);
     if (!formAccountId && sortedAccounts.length > 0) setFormAccountId(sortedAccounts[0].id);
   };
 
@@ -395,7 +398,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
                         <option value="Other">+ New Category...</option>
                     </select>
-                    {ruleUsed && (
+                    {appliedRuleId && (
                         <div className="mt-1 flex items-center gap-1.5 text-[9px] font-black text-brand-600 uppercase tracking-tighter animate-fade-in">
                             <Zap size={10} fill="currentColor"/> Rule applied automatically
                         </div>
