@@ -10,11 +10,11 @@ import { Settings } from './components/Settings';
 import { AssetClassDashboard } from './components/AssetClassDashboard';
 import { Auth } from './components/Auth';
 import { HelpPanel } from './components/HelpPanel';
-import { Transaction, RecurringTransaction, Account, TransactionType, Frequency, AmountType, SmartCategoryBudget, Valuation, FinancialGoal } from './types';
+import { Transaction, RecurringTransaction, Account, TransactionType, Frequency, AmountType, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from './types';
 import { 
   fetchTransactions, createAccount as saveAccountToDb, batchCreateAccounts, updateAccountsLinks, fetchAccounts, fetchRecurring, createRecurring, batchCreateRecurring, fetchCategories, createCategory, batchCreateCategories, deleteAccount as deleteAccountFromDb, deleteRecurring, deleteTransaction as deleteTx, clearAllUserData, batchCreateTransactions,
   fetchCategoryBudgets, batchCreateCategoryBudgets, saveCategoryBudget, deleteCategoryBudget, createTransaction, fetchValuations, batchCreateValuations, saveValuation, deleteValuation, createAccountSubType, batchCreateAccountSubTypes,
-  fetchGoals, saveGoal, deleteGoal, batchCreateGoals
+  fetchGoals, saveGoal, deleteGoal, batchCreateGoals, fetchRules, saveRule, deleteRule
 } from './services/storageService';
 import { initSupabase, isConfigured } from './services/supabaseClient';
 import { ChevronDown, PiggyBank, ShieldCheck, LogOut, HelpCircle, Loader, CreditCard, Target } from 'lucide-react';
@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [categoryBudgets, setCategoryBudgets] = useState<SmartCategoryBudget[]>([]);
   const [valuations, setValuations] = useState<Valuation[]>([]);
   const [goals, setGoals] = useState<FinancialGoal[]>([]);
+  const [rules, setRules] = useState<TransactionRule[]>([]);
   
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
   const chatSessionRef = useRef<Chat | null>(null);
@@ -72,7 +73,7 @@ const App: React.FC = () => {
   useEffect(() => { 
     if (session?.user) loadData(); 
     else {
-      setTransactions([]); setRecurring([]); setAccounts([]); setCategories([]); setCategoryBudgets([]); setValuations([]); setGoals([]);
+      setTransactions([]); setRecurring([]); setAccounts([]); setCategories([]); setCategoryBudgets([]); setValuations([]); setGoals([]); setRules([]);
       setFinancialInsight(null); setChatMessages([]); chatSessionRef.current = null; hasProcessedRef.current = false;
     }
   }, [session]);
@@ -81,12 +82,12 @@ const App: React.FC = () => {
     if (!session?.user) return;
     try {
       const uid = session.user.id;
-      const [accs, txs, recs, budgets, vals, cats, gls] = await Promise.all([
+      const [accs, txs, recs, budgets, vals, cats, gls, rls] = await Promise.all([
         fetchAccounts(uid), fetchTransactions(uid), fetchRecurring(uid),
-        fetchCategoryBudgets(uid), fetchValuations(uid), fetchCategories(uid), fetchGoals(uid)
+        fetchCategoryBudgets(uid), fetchValuations(uid), fetchCategories(uid), fetchGoals(uid), fetchRules(uid)
       ]);
       setAccounts(sortAccounts(accs || [])); setTransactions(txs || []); setRecurring(recs || []);
-      setCategories(cats || []); setCategoryBudgets(budgets || []); setValuations(vals || []); setGoals(gls || []);
+      setCategories(cats || []); setCategoryBudgets(budgets || []); setValuations(vals || []); setGoals(gls || []); setRules(rls || []);
     } catch (e: any) { console.error("Error loading data:", e); }
   };
 
@@ -109,6 +110,16 @@ const App: React.FC = () => {
   const handleDeleteGoal = async (id: string) => {
     setGoals(prev => prev.filter(g => g.id !== id));
     try { await deleteGoal(id); } catch (e) { console.error(e); }
+  };
+
+  const handleSaveRule = async (r: TransactionRule) => {
+      setRules(prev => prev.some(item => item.id === r.id) ? prev.map(item => item.id === r.id ? r : item) : [...prev, r]);
+      try { await saveRule(r); } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+      setRules(prev => prev.filter(r => r.id !== id));
+      try { await deleteRule(id); } catch (e) { console.error(e); }
   };
 
   const handleSaveAccount = async (acc: Account) => { setAccounts(prev => sortAccounts(prev.some(a => a.id === acc.id) ? prev.map(a => a.id === acc.id ? acc : a) : [...prev, acc])); try { await saveAccountToDb(acc); } catch (e) { console.error(e); } };
@@ -142,6 +153,7 @@ const App: React.FC = () => {
       if (data.recurring) data.recurring = data.recurring.map((rec: any) => ({ ...rec, id: isUuid(rec.id) ? rec.id : crypto.randomUUID(), accountId: updateLink(rec.accountId), toAccountId: updateLink(rec.toAccountId) }));
       if (data.valuations) data.valuations = data.valuations.map((val: any) => ({ ...val, id: isUuid(val.id) ? val.id : crypto.randomUUID(), accountId: updateLink(val.accountId) }));
       if (data.goals) data.goals = data.goals.map((gl: any) => ({ ...gl, id: isUuid(gl.id) ? gl.id : crypto.randomUUID(), accountId: updateLink(gl.accountId) }));
+      if (data.rules) data.rules = data.rules.map((rl: any) => ({ ...rl, id: isUuid(rl.id) ? rl.id : crypto.randomUUID() }));
 
       setRestorationProgress('Clearing existing records...');
       await clearAllUserData();
@@ -181,6 +193,10 @@ const App: React.FC = () => {
           setRestorationProgress(`Uploading ${data.categoryBudgets.length} budgets...`);
           await batchCreateCategoryBudgets(data.categoryBudgets);
       }
+      if (data.rules?.length) {
+          setRestorationProgress(`Uploading ${data.rules.length} rules...`);
+          for (const rule of data.rules) await saveRule(rule);
+      }
 
       setRestorationProgress('Finalizing sync...');
       await loadData();
@@ -195,7 +211,7 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    const commonProps = { transactions, recurring, categoryBudgets, accounts: sortedAccounts, goals, selectedAccountId, valuations };
+    const commonProps = { transactions, recurring, categoryBudgets, accounts: sortedAccounts, goals, selectedAccountId, valuations, rules };
     switch (activeTab) {
       case 'dashboard': return <Dashboard {...commonProps} />;
       case 'transactions': return <TransactionList {...commonProps} categories={categories} onAddTransaction={handleAddTransaction} onEditTransaction={handleEditTransaction} onDeleteTransaction={handleDeleteTransaction} onAddCategory={(c) => setCategories(prev => [...new Set([...prev, c])])} />;
@@ -206,7 +222,7 @@ const App: React.FC = () => {
       case 'liabilities': return <AssetClassDashboard title="Liabilities" accountType="loan" icon={CreditCard} {...commonProps} onSaveValuation={handleSaveValuation} onDeleteValuation={handleDeleteValuation} />;
       case 'forecast': return <ForecastView {...commonProps} insight={financialInsight} setInsight={setFinancialInsight} persistentChatMessages={chatMessages} onUpdateChatMessages={setChatMessages} chatSessionRef={chatSessionRef} />;
       case 'ai': return <ForecastView viewMode="ai" {...commonProps} insight={financialInsight} setInsight={setFinancialInsight} persistentChatMessages={chatMessages} onUpdateChatMessages={setChatMessages} chatSessionRef={chatSessionRef} />;
-      case 'settings': return <Settings {...commonProps} categories={categories} onSaveAccount={handleSaveAccount} onDeleteAccount={handleDeleteAccount} onUpdateCategories={setCategories} onRenameCategory={() => {}} onRestoreData={handleRestoreData} />;
+      case 'settings': return <Settings {...commonProps} categories={categories} onSaveAccount={handleSaveAccount} onDeleteAccount={handleDeleteAccount} onUpdateCategories={setCategories} onRenameCategory={() => {}} onRestoreData={handleRestoreData} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} />;
       default: return <Dashboard {...commonProps} />;
     }
   };

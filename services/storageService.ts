@@ -1,6 +1,6 @@
 
 import { initSupabase } from './supabaseClient';
-import { Transaction, RecurringTransaction, Account, SmartCategoryBudget, Valuation, TransactionType, FinancialGoal } from '../types';
+import { Transaction, RecurringTransaction, Account, SmartCategoryBudget, Valuation, TransactionType, FinancialGoal, TransactionRule } from '../types';
 
 const stringifyAny = (obj: any): string => {
     if (!obj) return "No error details provided.";
@@ -71,7 +71,7 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
 }
 
 export const checkTableHealth = async (): Promise<Record<string, boolean>> => {
-    const tables = ['accounts', 'transactions', 'recurring', 'category_budgets', 'valuations', 'goals', 'categories', 'account_sub_types'];
+    const tables = ['accounts', 'transactions', 'recurring', 'category_budgets', 'valuations', 'goals', 'categories', 'account_sub_types', 'transaction_rules'];
     const health: Record<string, boolean> = {};
     const supabase = initSupabase();
     if (!supabase) return {};
@@ -265,6 +265,25 @@ const goalToDb = (g: FinancialGoal, userId: string) => ({
   color: g.color,
   account_id: g.accountId || null,
   is_active: g.isActive,
+});
+
+const mapRule = (row: any): TransactionRule => ({
+    id: row.id,
+    payeePattern: row.payee_pattern,
+    amountCondition: row.amount_condition,
+    amountValue: row.amount_value ? Number(row.amount_value) : undefined,
+    category: row.category,
+    isActive: row.is_active,
+});
+
+const ruleToDb = (rule: TransactionRule, userId: string) => ({
+    id: rule.id,
+    user_id: userId,
+    payee_pattern: rule.payeePattern,
+    amount_condition: rule.amountCondition,
+    amount_value: rule.amountValue || null,
+    category: rule.category,
+    is_active: rule.isActive,
 });
 
 export const fetchAccounts = async (uid?: string): Promise<Account[]> => {
@@ -511,9 +530,32 @@ export const deleteGoal = async (id: string) => {
     if (error) throw new Error(stringifyAny(error));
 };
 
+export const fetchRules = async (uid?: string): Promise<TransactionRule[]> => {
+    try {
+        const { supabase, userId } = await getContext();
+        return safeFetch<TransactionRule>(
+            supabase.from('transaction_rules').select('*').eq('user_id', uid || userId),
+            mapRule,
+            'transaction_rules'
+        );
+    } catch (e) { return []; }
+};
+
+export const saveRule = async (rule: TransactionRule) => {
+    const { supabase, userId } = await getContext();
+    const { error } = await supabase.from('transaction_rules').upsert(ruleToDb(rule, userId));
+    if (error) throw new Error(stringifyAny(error));
+};
+
+export const deleteRule = async (id: string) => {
+    const { supabase, userId } = await getContext();
+    const { error } = await supabase.from('transaction_rules').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw new Error(stringifyAny(error));
+};
+
 export const clearAllUserData = async () => {
     const { supabase, userId } = await getContext();
-    const tableOrder = ['transactions', 'recurring', 'valuations', 'category_budgets', 'goals', 'accounts', 'categories', 'account_sub_types'];
+    const tableOrder = ['transactions', 'recurring', 'valuations', 'category_budgets', 'goals', 'transaction_rules', 'accounts', 'categories', 'account_sub_types'];
     for (const table of tableOrder) {
         try {
             const { error } = await supabase.from(table).delete().eq('user_id', userId);

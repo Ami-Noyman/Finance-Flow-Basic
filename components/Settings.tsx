@@ -1,15 +1,16 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal } from '../types';
+import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
 import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon } from 'lucide-react';
-import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection } from '../services/storageService';
+import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection, fetchRules, saveRule, deleteRule } from '../services/storageService';
 import { initSupabase, getDebugInfo } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
 
 interface SettingsProps {
   accounts: Account[];
   categories: string[];
+  rules: TransactionRule[];
   transactions?: Transaction[];
   recurring?: RecurringTransaction[];
   goals: FinancialGoal[];
@@ -20,6 +21,8 @@ interface SettingsProps {
   onRenameCategory: (oldName: string, newName: string) => void;
   onRestoreData: (data: any) => Promise<void>;
   onRunAutoProcess?: () => void;
+  onSaveRule: (rule: TransactionRule) => Promise<void>;
+  onDeleteRule: (id: string) => Promise<void>;
 }
 
 const IS_ASSET_CLASS = (type: string) => ['savings', 'pension', 'investment', 'loan', 'mortgage'].includes(type);
@@ -146,14 +149,26 @@ CREATE TABLE IF NOT EXISTS public.goals (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 7. Custom Categories
+-- 7. Transaction Rules (Memorized Transactions)
+CREATE TABLE IF NOT EXISTS public.transaction_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    payee_pattern TEXT NOT NULL,
+    amount_condition TEXT DEFAULT 'any',
+    amount_value NUMERIC,
+    category TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 8. Custom Categories
 CREATE TABLE IF NOT EXISTS public.categories (
     name TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     PRIMARY KEY (name, user_id)
 );
 
--- 8. Account Sub Types
+-- 9. Account Sub Types
 CREATE TABLE IF NOT EXISTS public.account_sub_types (
     name TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -167,39 +182,29 @@ ALTER TABLE public.recurring ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.valuations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transaction_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_sub_types ENABLE ROW LEVEL SECURITY;
 
 -- Idempotent Policy Creation
-DROP POLICY IF EXISTS "Users can manage their own accounts" ON public.accounts;
-CREATE POLICY "Users can manage their own accounts" ON public.accounts FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own transactions" ON public.transactions;
-CREATE POLICY "Users can manage their own transactions" ON public.transactions FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own recurring" ON public.recurring;
-CREATE POLICY "Users can manage their own recurring" ON public.recurring FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own budgets" ON public.category_budgets;
-CREATE POLICY "Users can manage their own budgets" ON public.category_budgets FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own valuations" ON public.valuations;
-CREATE POLICY "Users can manage their own valuations" ON public.valuations FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own goals" ON public.goals;
-CREATE POLICY "Users can manage their own goals" ON public.goals FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own categories" ON public.categories;
-CREATE POLICY "Users can manage their own categories" ON public.categories FOR ALL USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can manage their own sub_types" ON public.account_sub_types;
-CREATE POLICY "Users can manage their own sub_types" ON public.account_sub_types FOR ALL USING (auth.uid() = user_id);`;
+DO $$ 
+DECLARE
+    t TEXT;
+BEGIN
+    FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' 
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "Users can manage their own %I" ON public.%I', t, t);
+        EXECUTE format('CREATE POLICY "Users can manage their own %I" ON public.%I FOR ALL USING (auth.uid() = user_id)', t, t);
+    END LOOP;
+END $$;
+`;
 
 export const Settings: React.FC<SettingsProps> = ({ 
-  accounts, categories, transactions = [], recurring = [], goals = [],
-  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onRunAutoProcess
+  accounts, categories, rules, transactions = [], recurring = [], goals = [],
+  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onRunAutoProcess,
+  onSaveRule, onDeleteRule
 }) => {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'data' | 'db'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'rules' | 'data' | 'db'>('accounts');
   const [tableHealth, setTableHealth] = useState<Record<string, boolean>>({});
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -230,6 +235,13 @@ export const Settings: React.FC<SettingsProps> = ({
   const [accInterestRate, setAccInterestRate] = useState('');
   const [accTermMonths, setAccTermMonths] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Rule Form
+  const [isEditingRule, setIsEditingRule] = useState<string | null>(null);
+  const [rulePattern, setRulePattern] = useState('');
+  const [ruleCondition, setRuleCondition] = useState<'less' | 'greater' | 'equal' | 'any'>('any');
+  const [ruleValue, setRuleValue] = useState('');
+  const [ruleCategory, setRuleCategory] = useState('');
 
   useEffect(() => { 
     loadSubTypes(); 
@@ -317,9 +329,34 @@ export const Settings: React.FC<SettingsProps> = ({
     setIsEditingAccount(null); 
   };
 
+  const handleSaveRule = async () => {
+    if (!rulePattern || !ruleCategory || isSaving) return;
+    setIsSaving(true);
+    try {
+        const rData: TransactionRule = {
+            id: isEditingRule || crypto.randomUUID(),
+            payeePattern: rulePattern,
+            amountCondition: ruleCondition,
+            amountValue: ruleCondition !== 'any' ? parseFloat(ruleValue) : undefined,
+            category: ruleCategory,
+            isActive: true
+        };
+        await onSaveRule(rData);
+        resetRuleForm();
+    } finally { setIsSaving(false); }
+  };
+
+  const resetRuleForm = () => {
+      setIsEditingRule(null); setRulePattern(''); setRuleCondition('any'); setRuleValue(''); setRuleCategory(categories[0] || '');
+  };
+
+  const handleEditRule = (r: TransactionRule) => {
+      setIsEditingRule(r.id); setRulePattern(r.payeePattern); setRuleCondition(r.amountCondition); setRuleValue(r.amountValue?.toString() || ''); setRuleCategory(r.category);
+  };
+
   const handleExportData = async () => {
-    const [budgets, vals, subs, gls] = await Promise.all([ fetchCategoryBudgets(), fetchValuations(), fetchAccountSubTypes(), fetchGoals() ]);
-    const exportData = { accounts, transactions, recurring, categories, categoryBudgets: budgets, valuations: vals, goals: gls, accountSubTypes: subs, backend: 'supabase', timestamp: new Date().toISOString() };
+    const [budgets, vals, subs, gls, rls] = await Promise.all([ fetchCategoryBudgets(), fetchValuations(), fetchAccountSubTypes(), fetchGoals(), fetchRules() ]);
+    const exportData = { accounts, transactions, recurring, categories, rules: rls, categoryBudgets: budgets, valuations: vals, goals: gls, accountSubTypes: subs, backend: 'supabase', timestamp: new Date().toISOString() };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -378,6 +415,7 @@ export const Settings: React.FC<SettingsProps> = ({
       <div className="flex space-x-4 border-b border-gray-200 overflow-x-auto">
         <button onClick={() => setActiveTab('accounts')} className={`pb-2 px-4 font-medium transition-colors border-b-2 ${activeTab === 'accounts' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Accounts</button>
         <button onClick={() => setActiveTab('categories')} className={`pb-2 px-4 font-medium transition-colors border-b-2 ${activeTab === 'categories' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Categories</button>
+        <button onClick={() => setActiveTab('rules')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'rules' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Zap size={16} /> Rules</button>
         <button onClick={() => setActiveTab('data')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'data' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Database size={16} /> Backup</button>
         <button onClick={() => setActiveTab('db')} className={`pb-2 px-4 font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'db' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Server size={16} /> Database</button>
       </div>
@@ -518,6 +556,80 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
+      {activeTab === 'rules' && (
+          <div className="space-y-6">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                  <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Zap className="text-brand-500"/>{isEditingRule ? 'Edit' : 'Add'} Categorization Rule</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="md:col-span-1">
+                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payee Contains</label>
+                          <input type="text" value={rulePattern} onChange={e=>setRulePattern(e.target.value)} placeholder="e.g. Yellow" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
+                      </div>
+                      <div>
+                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Rule</label>
+                          <select value={ruleCondition} onChange={e=>setRuleCondition(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                              <option value="any">Any Amount</option>
+                              <option value="less">Less Than (&lt;)</option>
+                              <option value="greater">Greater Than (&gt;)</option>
+                              <option value="equal">Exactly Equals (=)</option>
+                          </select>
+                      </div>
+                      {ruleCondition !== 'any' && (
+                          <div>
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Value</label>
+                              <input type="number" value={ruleValue} onChange={e=>setRuleValue(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
+                          </div>
+                      )}
+                      <div>
+                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Assign Category</label>
+                          <select value={ruleCategory} onChange={e=>setRuleCategory(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                      </div>
+                  </div>
+                  <div className="mt-8 flex gap-4 pt-8 border-t border-slate-50">
+                      <button onClick={handleSaveRule} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
+                          {isSaving && <Loader size={16} className="animate-spin" />}
+                          {isEditingRule ? 'Update Rule' : 'Create Rule'}
+                      </button>
+                      {isEditingRule && <button onClick={resetRuleForm} className="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
+                  </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {rules.map(rule => (
+                      <div key={rule.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
+                          <div className="flex justify-between items-start mb-6">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><Zap size={20}/></div>
+                                  <div>
+                                      <div className="font-black text-slate-800">"{rule.payeePattern}"</div>
+                                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                          If {rule.amountCondition === 'any' ? 'any amount' : `${rule.amountCondition} ${rule.amountValue}`}
+                                      </div>
+                                  </div>
+                              </div>
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={()=>handleEditRule(rule)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl"><Edit2 size={16}/></button>
+                                  <button onClick={()=>onDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"><Trash2 size={16}/></button>
+                              </div>
+                          </div>
+                          <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</span>
+                              <span className="text-xs font-black text-brand-600">→ {rule.category}</span>
+                          </div>
+                      </div>
+                  ))}
+                  {rules.length === 0 && (
+                    <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-300 bg-gray-50/50 rounded-[2.5rem] border-4 border-dashed border-gray-100">
+                        <Zap size={48} className="mb-4 opacity-20"/>
+                        <p className="font-black uppercase tracking-widest text-xs">No transaction rules defined yet.</p>
+                    </div>
+                  )}
+              </div>
+          </div>
+      )}
+
       {activeTab === 'db' && (
         <div className="space-y-6">
             <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-2xl space-y-6">
@@ -604,7 +716,7 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
         </div>
       )}
-
+      
       {activeTab === 'categories' && (
         <div className="space-y-6">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">

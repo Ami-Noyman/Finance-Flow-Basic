@@ -1,5 +1,5 @@
 
-import { RecurringTransaction, Transaction, Frequency, AmountType, SmartCategoryBudget, Account } from '../types';
+import { RecurringTransaction, Transaction, Frequency, AmountType, SmartCategoryBudget, Account, BalanceAlert, TransactionType } from '../types';
 import { addDays, addWeeks, addMonths, addYears, parseISO, startOfMonth, endOfMonth, isWithinInterval, format, subMonths, differenceInCalendarMonths, isBefore, isSameDay, startOfDay } from 'date-fns';
 
 /**
@@ -145,4 +145,90 @@ export const getEffectiveCategoryBudget = (budget: SmartCategoryBudget, history:
     return avg > 0 ? avg : budget.monthlyLimit;
   }
   return budget.monthlyLimit;
+};
+
+/**
+ * Predicts balance issues over the next 45 days.
+ */
+export const calculateBalanceAlerts = (
+  accounts: Account[],
+  transactions: Transaction[],
+  recurring: RecurringTransaction[]
+): BalanceAlert[] => {
+    const alerts: BalanceAlert[] = [];
+    const today = startOfDay(new Date());
+    const horizon = addDays(today, 45);
+
+    // Initial current balances
+    const currentBalances: Record<string, number> = {};
+    accounts.forEach(a => currentBalances[a.id] = a.initialBalance);
+
+    transactions.forEach(t => {
+        if (parseISO(t.date) <= today) {
+            if (t.type === TransactionType.INCOME) currentBalances[t.accountId] += t.amount;
+            else if (t.type === TransactionType.EXPENSE) currentBalances[t.accountId] -= t.amount;
+            else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+                currentBalances[t.accountId] -= t.amount;
+                currentBalances[t.toAccountId] += t.amount;
+            }
+        }
+    });
+
+    // Forecast per day
+    const workingBalances = { ...currentBalances };
+    const activeRecs = recurring.filter(r => r.isActive).map(r => ({
+        ...r,
+        simDate: parseISO(r.nextDueDate)
+    }));
+
+    for (let i = 1; i <= 45; i++) {
+        const simDate = addDays(today, i);
+        const dateStr = format(simDate, 'yyyy-MM-dd');
+
+        // Apply future manual transactions
+        transactions.filter(t => t.date === dateStr).forEach(t => {
+            if (t.type === TransactionType.INCOME) workingBalances[t.accountId] += t.amount;
+            else if (t.type === TransactionType.EXPENSE) workingBalances[t.accountId] -= t.amount;
+            else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+                workingBalances[t.accountId] -= t.amount;
+                workingBalances[t.toAccountId] += t.amount;
+            }
+        });
+
+        // Apply recurring
+        activeRecs.forEach(r => {
+            if (isSameDay(r.simDate, simDate)) {
+                const amount = getSmartAmount(r, simDate, transactions);
+                if (r.type === TransactionType.INCOME) workingBalances[r.accountId] += amount;
+                else if (r.type === TransactionType.EXPENSE) workingBalances[r.accountId] -= amount;
+                else if (r.type === TransactionType.TRANSFER && r.toAccountId) {
+                    workingBalances[r.accountId] -= amount;
+                    workingBalances[r.toAccountId] += amount;
+                }
+
+                // Check for violation
+                if (workingBalances[r.accountId] < 0) {
+                    const acc = accounts.find(a => a.id === r.accountId);
+                    if (acc && (acc.type === 'checking' || acc.type === 'cash')) {
+                        // Only add one alert per account (the first violation)
+                        if (!alerts.some(a => a.accountId === acc.id)) {
+                            alerts.push({
+                                accountId: acc.id,
+                                accountName: acc.name,
+                                date: dateStr,
+                                projectedBalance: workingBalances[r.accountId],
+                                triggerPayee: r.payee,
+                                triggerAmount: amount,
+                                severity: workingBalances[r.accountId] < -1000 ? 'critical' : 'warning'
+                            });
+                        }
+                    }
+                }
+
+                r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
+            }
+        });
+    }
+
+    return alerts;
 };

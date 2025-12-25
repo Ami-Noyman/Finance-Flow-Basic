@@ -101,6 +101,25 @@ export interface SmartCategoryBudget {
   isActive: boolean;
 }
 
+export interface TransactionRule {
+  id: string;
+  payeePattern: string;
+  amountCondition: 'less' | 'greater' | 'equal' | 'any';
+  amountValue?: number;
+  category: string;
+  isActive: boolean;
+}
+
+export interface BalanceAlert {
+  accountId: string;
+  accountName: string;
+  date: string;
+  projectedBalance: number;
+  triggerPayee: string;
+  triggerAmount: number;
+  severity: 'warning' | 'critical';
+}
+
 export interface ForecastPoint {
   date: string;
   balance: number;
@@ -116,4 +135,5 @@ export interface AppState {
   categoryBudgets: SmartCategoryBudget[];
   valuations: Valuation[];
   goals: FinancialGoal[];
+  rules: TransactionRule[];
 }

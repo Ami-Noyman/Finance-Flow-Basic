@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
-import { Transaction, TransactionType, Account } from '../types';
-import { Plus, Trash2, Search, ArrowUpCircle, ArrowDownCircle, Edit2, ArrowRightLeft, ArrowRight, CheckSquare, Square, Filter, X, Calendar, DollarSign, Repeat, StickyNote, RotateCcw } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Transaction, TransactionType, Account, TransactionRule } from '../types';
+import { Plus, Trash2, Search, ArrowUpCircle, ArrowDownCircle, Edit2, ArrowRightLeft, ArrowRight, CheckSquare, Square, Filter, X, Calendar, DollarSign, Repeat, StickyNote, RotateCcw, Zap } from 'lucide-react';
 import { categorizeTransaction } from '../services/geminiService';
 import { formatCurrency } from '../utils/currency';
 import { format, subMonths, startOfMonth, parseISO } from 'date-fns';
@@ -11,6 +11,7 @@ interface TransactionListProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: string[];
+  rules: TransactionRule[];
   selectedAccountId: string | null;
   onAddTransaction: (t: Transaction, makeRecurring?: boolean) => void;
   onEditTransaction: (t: Transaction, makeRecurring?: boolean) => void;
@@ -21,7 +22,8 @@ interface TransactionListProps {
 export const TransactionList: React.FC<TransactionListProps> = ({ 
   transactions, 
   accounts, 
-  categories, 
+  categories,
+  rules,
   selectedAccountId, 
   onAddTransaction, 
   onEditTransaction, 
@@ -56,8 +58,38 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
   const [isReconciled, setIsReconciled] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
+  const [ruleUsed, setRuleUsed] = useState(false);
 
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
+
+  // Apply Rules Logic
+  useEffect(() => {
+    if (!payee || !amount || editingId) return;
+    const numAmt = parseFloat(amount);
+    if (isNaN(numAmt)) return;
+
+    const matchedRule = rules.find(rule => {
+        if (!rule.isActive) return false;
+        const payeeMatch = payee.toLowerCase().includes(rule.payeePattern.toLowerCase());
+        if (!payeeMatch) return false;
+
+        if (rule.amountCondition === 'any') return true;
+        if (rule.amountValue === undefined) return true;
+        
+        if (rule.amountCondition === 'less') return numAmt < rule.amountValue;
+        if (rule.amountCondition === 'greater') return numAmt > rule.amountValue;
+        if (rule.amountCondition === 'equal') return numAmt === rule.amountValue;
+        
+        return false;
+    });
+
+    if (matchedRule) {
+        setCategory(matchedRule.category);
+        setRuleUsed(true);
+    } else {
+        setRuleUsed(false);
+    }
+  }, [payee, amount, rules, editingId]);
 
   const getPayee = (t: any) => t.payee || t.description || '';
 
@@ -81,6 +113,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       setToAccountId(tx.toAccountId || '');
       setIsReconciled(tx.isReconciled || false);
       setMakeRecurring(false);
+      setRuleUsed(false);
     } else {
       resetForm();
       if (selectedAccountId) setFormAccountId(selectedAccountId);
@@ -139,6 +172,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     setToAccountId('');
     setIsReconciled(false);
     setMakeRecurring(false);
+    setRuleUsed(false);
     if (!formAccountId && sortedAccounts.length > 0) setFormAccountId(sortedAccounts[0].id);
   };
 
@@ -350,7 +384,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               <div className="grid grid-cols-2 gap-5">
                 <div><label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">{type === TransactionType.TRANSFER ? 'Source Account' : 'Account'}</label><select value={formAccountId} onChange={e => setFormAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none font-bold">{sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></div>
                 {type === TransactionType.TRANSFER && (<div><label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Destination Account</label><select required value={toAccountId} onChange={e => setToAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none font-bold"><option value="">Select Target...</option>{sortedAccounts.filter(a => a.id !== formAccountId).map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></div>)}
-                {type !== TransactionType.TRANSFER && (<div><label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none font-bold"><option value="">Auto-categorize</option>{categories.map(c => <option key={c} value={c}>{c}</option>)}<option value="Other">+ New Category...</option></select>{category === 'Other' && (<input type="text" placeholder="Category Name" value={customCategory} onChange={e => setCustomCategory(e.target.value)} className="mt-2 w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold" />)}</div>)}
+                {type !== TransactionType.TRANSFER && (
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Category</label>
+                    <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none font-bold">
+                        <option value="">Auto-categorize</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="Other">+ New Category...</option>
+                    </select>
+                    {ruleUsed && (
+                        <div className="mt-1 flex items-center gap-1.5 text-[9px] font-black text-brand-600 uppercase tracking-tighter animate-fade-in">
+                            <Zap size={10} fill="currentColor"/> Rule applied automatically
+                        </div>
+                    )}
+                    {category === 'Other' && (<input type="text" placeholder="Category Name" value={customCategory} onChange={e => setCustomCategory(e.target.value)} className="mt-2 w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold" />)}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-6 pt-2">

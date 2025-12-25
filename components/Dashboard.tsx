@@ -4,11 +4,11 @@ import {
   BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
-import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
-import { calculateNextDate, getSmartAmount, sortAccounts } from '../utils/finance';
+import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies } from '../services/geminiService';
 
 interface DashboardProps {
@@ -34,6 +34,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       });
     }
   }, [transactions.length]);
+
+  const balanceAlerts = useMemo(() => {
+    return calculateBalanceAlerts(accounts, transactions, recurring);
+  }, [accounts, transactions, recurring]);
 
   const displayCurrency = selectedAccountId 
      ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
@@ -176,6 +180,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
       
+      {/* Predictive Alerts Banner */}
+      {balanceAlerts.length > 0 && (
+        <div className="space-y-3">
+          {balanceAlerts.map((alert, i) => (
+            <div key={i} className={`p-4 rounded-2xl border flex items-center justify-between gap-4 shadow-sm animate-pulse ${alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <div className="flex items-center gap-4">
+                <div className={`p-2 rounded-xl ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                   <AlertTriangle size={24}/>
+                </div>
+                <div>
+                   <p className="font-black text-sm uppercase tracking-tight">Projected Liquidity Gap</p>
+                   <p className="text-xs font-medium leading-relaxed">
+                     Based on upcoming <strong>{alert.triggerPayee}</strong> ({formatCurrency(alert.triggerAmount)}) on {alert.date}, 
+                     your <strong>{alert.accountName}</strong> balance will hit <span className="font-black">{formatCurrency(alert.projectedBalance)}</span>.
+                   </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forecast' }))}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all whitespace-nowrap ${alert.severity === 'critical' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-amber-600 text-white hover:bg-amber-700'}`}
+              >
+                Model Solutions <ArrowRight size={14}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Flash Insights Marquee */}
       {(anomalies.length > 0 || isAnalyzing) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
