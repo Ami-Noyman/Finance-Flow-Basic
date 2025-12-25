@@ -2,10 +2,11 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
-import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon, Brain, Sparkles, ExternalLink, Key } from 'lucide-react';
 import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection, fetchRules, saveRule, deleteRule } from '../services/storageService';
 import { initSupabase, getDebugInfo } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
+import { getApiKey } from '../services/geminiService';
 
 interface SettingsProps {
   accounts: Account[];
@@ -415,6 +416,16 @@ export const Settings: React.FC<SettingsProps> = ({
     alert("SQL Patch copied to clipboard!");
   };
 
+  const handleOpenGeminiKey = async () => {
+      if (window.aistudio) {
+          await window.aistudio.openSelectKey();
+          // Instructions say to assume success and proceed/reload
+          window.location.reload();
+      } else {
+          alert("AI Studio environment not detected. Please use Vercel environment variables.");
+      }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
@@ -656,44 +667,101 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Globe size={28}/></div>
                         <div>
-                            <h3 className="text-xl font-black">Database Connection</h3>
-                            <p className="text-xs text-slate-400 font-medium">Manage your Supabase cloud link</p>
+                            <h3 className="text-xl font-black">Diagnostics & Connectivity</h3>
+                            <p className="text-xs text-slate-400 font-medium">Verify environment variable injection status</p>
                         </div>
                     </div>
                     <button onClick={handleTestConnection} disabled={isTestingConnection} className="flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 rounded-2xl text-xs font-black uppercase transition-all shadow-lg active:scale-95">
-                        <Activity size={16} className={isTestingConnection ? 'animate-spin' : ''}/> {isTestingConnection ? 'Testing...' : 'Test Connection'}
+                        <Activity size={16} className={isTestingConnection ? 'animate-spin' : ''}/> {isTestingConnection ? 'Testing...' : 'Test Cloud Connection'}
                     </button>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Config Source</p>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Deployment Mode</p>
                         <div className="text-sm font-black flex items-center gap-2">
                            <span className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') ? 'bg-green-500' : 'bg-orange-500'}`}></span>
                            <span>{debugInfo.source}</span>
                         </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">URL Detected</p>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Supabase Endpoint</p>
                         <div className="text-sm font-black flex items-center gap-2">
                            {debugInfo.hasUrl ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
                            <span>{debugInfo.urlPreview}</span>
                         </div>
                     </div>
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Anon Key Detected</p>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">AI Agent Status</p>
+                        <div className="text-sm font-black flex items-center gap-2">
+                           {getApiKey() ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
+                           <span>{getApiKey() ? 'API_KEY LOADED' : 'API_KEY MISSING'}</span>
+                        </div>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Anon Key Status</p>
                         <div className="text-sm font-black flex items-center gap-2">
                            {debugInfo.hasKey ? <CheckCircle2 size={14} className="text-green-500"/> : <XCircle size={14} className="text-red-500"/>}
                            <span>{debugInfo.hasKey ? 'PRESENT' : 'MISSING'}</span>
                         </div>
                     </div>
                 </div>
+
+                {/* GEMINI AI SPECIFIC SETUP */}
+                <div className="mt-10 pt-8 border-t border-slate-800">
+                    <div className="flex justify-between items-start mb-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-orange-500/20 text-orange-400 rounded-2xl"><Sparkles size={28}/></div>
+                            <div>
+                                <h3 className="text-xl font-black">Gemini AI Connectivity</h3>
+                                <p className="text-xs text-slate-400 font-medium">Power your insights, chat, and automated categorization</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {!getApiKey() ? (
+                        <div className="bg-orange-500/10 border border-orange-500/20 p-6 rounded-2xl space-y-4">
+                            <div className="flex items-start gap-4">
+                                <AlertTriangle className="text-orange-400 shrink-0 mt-1" size={24}/>
+                                <div>
+                                    <h4 className="text-sm font-black text-orange-400 uppercase tracking-tight">AI Key Not Detected</h4>
+                                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                        You are currently running without a Gemini API Key. To fix this:
+                                    </p>
+                                    <ul className="text-xs text-slate-300 mt-2 list-disc list-inside space-y-1 ml-1">
+                                        <li><strong>Vercel Users:</strong> Add <code>API_KEY</code> to your Environment Variables and <strong>REDEPLOY</strong>.</li>
+                                        <li><strong>Standard Users:</strong> Use the secure connection dialog below.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-4 pt-4">
+                                <button onClick={handleOpenGeminiKey} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 transition-all shadow-xl shadow-orange-600/20">
+                                    <Key size={16}/> Connect via Key Dialog
+                                </button>
+                                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-6 py-4 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 border border-slate-700 transition-all">
+                                    <ExternalLink size={16}/> Billing Documentation
+                                </a>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-green-500/10 border border-green-500/20 p-6 rounded-2xl flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-green-500/20 text-green-400 rounded-full"><Check size={20}/></div>
+                                <div>
+                                    <h4 className="text-sm font-black text-green-400">Gemini AI Active</h4>
+                                    <p className="text-xs text-slate-400">Your account is successfully linked to the Google GenAI SDK.</p>
+                                </div>
+                            </div>
+                            <button onClick={handleOpenGeminiKey} className="text-xs font-black text-slate-400 hover:text-white uppercase tracking-widest border border-slate-700 px-4 py-2 rounded-lg transition-all">Change Key</button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
                 <div className="flex justify-between items-start">
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Database Health</h3>
+                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Database Schema Health</h3>
                         <p className="text-sm text-slate-500 mt-1 font-medium">Verify table status and column availability.</p>
                     </div>
                     <button onClick={refreshHealth} disabled={isCheckingHealth} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all">

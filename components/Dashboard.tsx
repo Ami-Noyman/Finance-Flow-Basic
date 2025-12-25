@@ -5,11 +5,11 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
-import { analyzeAnomalies } from '../services/geminiService';
+import { analyzeAnomalies, getApiKey } from '../services/geminiService';
 
 // Use sessionStorage so alerts reset when the session ends or user logs out
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
@@ -27,6 +27,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [showIndividualLines, setShowIndividualLines] = useState(true);
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAiMissing, setIsAiMissing] = useState(!getApiKey());
   
   // Initialize dismissed alerts from sessionStorage for per-session persistence
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
@@ -39,12 +40,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   });
 
   useEffect(() => {
-    if (transactions.length > 0) {
+    const key = getApiKey();
+    if (key && transactions.length > 0) {
+      setIsAiMissing(false);
       setIsAnalyzing(true);
       analyzeAnomalies(transactions).then(res => {
         setAnomalies(res);
         setIsAnalyzing(false);
       });
+    } else if (!key) {
+      setIsAiMissing(true);
     }
   }, [transactions.length]);
 
@@ -239,20 +244,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
-      {/* Flash Insights Marquee */}
-      {(anomalies.length > 0 || isAnalyzing) && (
+      {/* Flash Insights Marquee / AI Connector */}
+      {(anomalies.length > 0 || isAnalyzing || isAiMissing) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
              <Sparkles size={16} className="text-brand-400 animate-pulse" />
-             <span className="text-[10px] font-black uppercase tracking-widest">Flash Insights</span>
+             <span className="text-[10px] font-black uppercase tracking-widest">AI Agent</span>
            </div>
            <div className="flex-1 overflow-hidden">
-              {isAnalyzing ? (
+              {isAiMissing ? (
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-medium text-brand-300">AI analysis is disabled. Connect your Gemini key in Settings to see flash insights.</span>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings' }))} className="text-[10px] font-black uppercase bg-brand-600 px-3 py-1 rounded-lg hover:bg-brand-500 transition-colors">Connect</button>
+                </div>
+              ) : isAnalyzing ? (
                 <span className="text-xs font-medium animate-pulse">המערכת מנתחת תנועות חריגות...</span>
               ) : (
                 <div className="flex gap-8 animate-marquee whitespace-nowrap">
                   {anomalies.map((a, i) => (
                     <span key={i} className="text-xs font-bold flex items-center gap-2">
+                       <AlertCircle size={14} className="text-orange-400"/> {a}
+                    </span>
+                  ))}
+                  {/* Duplicate for smooth scroll */}
+                  {anomalies.map((a, i) => (
+                    <span key={`dup-${i}`} className="text-xs font-bold flex items-center gap-2">
                        <AlertCircle size={14} className="text-orange-400"/> {a}
                     </span>
                   ))}

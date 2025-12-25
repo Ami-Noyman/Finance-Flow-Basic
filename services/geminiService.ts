@@ -2,14 +2,43 @@
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
 
-const getFreshAi = () => {
+/**
+ * Interface for AI Studio external key management.
+ * Renamed from AiStudioGlobal to AIStudio to match existing global definitions.
+ */
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    // Added readonly modifier to align with global property modifiers and avoid TS mismatch errors.
+    readonly aistudio: AIStudio;
+  }
+}
+
+/**
+ * Robust helper to get the API key.
+ * Prioritizes process.env.API_KEY (injected at build time), 
+ * but provides fallback info for the UI.
+ */
+export const getApiKey = () => {
   const apiKey = process.env.API_KEY;
-  
-  // Robust check for missing keys in production builds
   if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    const errorMsg = "FinanceFlow Error: Gemini API_KEY is missing. " +
-                   "1. Ensure you added 'API_KEY' in Vercel Settings -> Environment Variables. " +
-                   "2. Ensure you have REDEPLOYED the project after adding the variable.";
+    return null;
+  }
+  return apiKey;
+};
+
+/**
+ * Creates a fresh instance of the Gemini API client.
+ */
+const getFreshAi = () => {
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    const errorMsg = "Gemini API_KEY is missing. AI features require an API key.";
     console.error(errorMsg);
     throw new Error("API_KEY_MISSING");
   }
@@ -17,31 +46,35 @@ const getFreshAi = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+/**
+ * Categorizes a transaction into Hebrew using Gemini 3 Flash.
+ */
 export const categorizeTransaction = async (payee: string, amount: number, existingCategories: string[] = []): Promise<string> => {
   try {
     const ai = getFreshAi();
     const categoriesList = existingCategories.length > 0 
-      ? `Choose the best fit from this list: [${existingCategories.join(', ')}]. If none fit, generate a new short single word in Hebrew.` 
-      : `Categorize this transaction into a single short Hebrew word (e.g., 'מזון', 'חשמל', 'משכורת').`;
+      ? `בחר את הקטגוריה המתאימה ביותר מהרשימה הבאה: [${existingCategories.join(', ')}]. אם אף אחת לא מתאימה, צור קטגוריה חדשה במילה אחת בעברית.` 
+      : `קטלג את התנועה הזו למילה אחת קצרה בעברית (למשל: 'מזון', 'חשמל', 'פנאי').`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Task: Categorize a financial transaction into Hebrew.
-      Payee: "${payee}"
-      Amount: ${amount}
-      Instructions: ${categoriesList}
-      Output: Only return the Hebrew category name, nothing else.`,
+      contents: `משימה: קטלג הוצאה פיננסית לעברית.
+      בית עסק: "${payee}"
+      סכום: ${amount}
+      הנחיות: ${categoriesList}
+      פלט: החזר רק את שם הקטגוריה בעברית, ללא הסברים נוספים.`,
     });
+    
     return response.text?.trim() || "כללי";
   } catch (error: any) {
-    if (error.message === "API_KEY_MISSING") {
-        return "כללי (Missing API Key)";
-    }
     console.error("Categorization failed:", error);
     return "כללי"; 
   }
 };
 
+/**
+ * Generates summary insights from financial history and forecasts.
+ */
 export const generateFinancialInsight = async (
   transactions: Transaction[],
   forecast: ForecastPoint[]
@@ -51,33 +84,35 @@ export const generateFinancialInsight = async (
     const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
     const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
 
-    const prompt = `Analyze this financial data and provide 2-3 tailored insights or tips in Hebrew.\nRecent Transactions:\n${recentTxsSummary}\nFuture Projection Snapshots:\n${forecastSummary}`;
+    const prompt = `נתח את הנתונים הפיננסיים הבאים וספק 2-3 תובנות או טיפים מותאמים אישית בעברית.\nתנועות אחרונות:\n${recentTxsSummary}\nתחזית יתרה עתידית:\n${forecastSummary}`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are a professional financial advisor. Respond in Hebrew using clean Markdown formatting.",
+        systemInstruction: "אתה יועץ פיננסי מקצועי. השב בעברית תוך שימוש בפורמט Markdown נקי.",
       }
     });
-    return response.text || "שגיאה בייצור תובנות.";
+    
+    return response.text || "לא ניתן היה לייצר תובנות כרגע.";
   } catch (error: any) {
-    if (error.message === "API_KEY_MISSING") {
-        return "שגיאה: מפתח ה-API חסר בהגדרות השרת. אנא בדוק את הגדרות ה-Environment Variables ב-Vercel ופרוס מחדש.";
-    }
-    return "שגיאה בייצור תובנות.";
+    console.error("Insight generation failed:", error);
+    return "שגיאה בייצור תובנות AI.";
   }
 };
 
+/**
+ * Scans recent transactions for anomalies using structured JSON output.
+ */
 export const analyzeAnomalies = async (transactions: Transaction[]): Promise<string[]> => {
   try {
     const ai = getFreshAi();
-    const recent = transactions.slice(0, 100).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
+    const recent = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Find 2-3 financial anomalies in these transactions (price increases, unusually high spend compared to category average). 
-      Output as a JSON array of Hebrew strings. Be very concise.
-      Transactions:\n${recent}`,
+      contents: `מצא 2-3 חריגות פיננסיות בתנועות האלה (עליות מחירים, הוצאה גבוהה מהרגיל לקטגוריה). 
+      החזר מערך JSON של מחרוזות בעברית בלבד. היה קצר ותמציתי.
+      תנועות:\n${recent}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -86,6 +121,7 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
         }
       }
     });
+    
     return JSON.parse(response.text || "[]");
   } catch (e: any) {
     console.error("Anomaly analysis failed:", e);
@@ -93,6 +129,9 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
   }
 };
 
+/**
+ * Initializes a conversational chat session with financial context.
+ */
 export const createFinancialChatSession = (
   transactions: Transaction[],
   recurring: RecurringTransaction[],
@@ -103,7 +142,7 @@ export const createFinancialChatSession = (
   const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount} (${r.frequency})`).join('\n');
   const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
 
-  const systemInstruction = `You are a helpful personal finance chatbot for an app called FinanceFlow. Respond in Hebrew.\nContext:\nACCOUNTS:\n${accountSummary}\nRECURRING:\n${recurringSummary}\nLAST 50 TX:\n${recentTx}`;
+  const systemInstruction = `אתה בוט פיננסי עוזר עבור אפליקציית FinanceFlow. השב תמיד בעברית.\nהקשר:\nחשבונות:\n${accountSummary}\nהתחייבויות קבועות:\n${recurringSummary}\n50 תנועות אחרונות:\n${recentTx}`;
 
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
