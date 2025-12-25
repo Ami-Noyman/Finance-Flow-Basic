@@ -5,7 +5,7 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers, BarChart3 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
@@ -122,8 +122,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     const incomeChange = lastIncome ? ((currentIncome - lastIncome) / lastIncome) * 100 : 0;
     const expenseChange = lastExpense ? ((currentExpense - lastExpense) / lastExpense) * 100 : 0;
 
-    // Net Worth Calculation (All account balances minus liabilities)
-    // FIX: Added explicit type annotations to resolve Operator '+' cannot be applied to types 'unknown' and 'unknown'.
     const netWorth = Object.values(balances).reduce((sum: number, b: number) => sum + b, 0);
 
     return {
@@ -136,9 +134,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     };
   }, [transactions, selectedAccountId, balances]);
 
-  const accountBarData = useMemo(() => {
-    // Include more account types in the bar data so the graph doesn't appear empty
+  const liquidAccountBarData = useMemo(() => {
+    // Strictly Checking, Credit, and Cash
+    const liquidTypes = ['checking', 'credit', 'cash'];
     return sortAccounts(accounts)
+      .filter(a => liquidTypes.includes(a.type))
       .filter(a => (!selectedAccountId || a.id === selectedAccountId))
       .map(a => ({
           name: a.name,
@@ -146,7 +146,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
           color: a.color,
           type: a.type
       }))
-      .filter(a => a.balance !== 0) // Hide zero-balance accounts to keep chart clean
       .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
   }, [accounts, balances, selectedAccountId]);
 
@@ -224,7 +223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
       
-      {/* CRITICAL: Database Missing Alert */}
+      {/* DB Health Alert */}
       {dbUnhealthy && (
         <div className="bg-red-600 text-white p-6 rounded-[2rem] shadow-2xl border-4 border-red-500/50 animate-fade-in relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><Database size={120}/></div>
@@ -232,9 +231,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                 <div className="flex items-center gap-6">
                     <div className="p-4 bg-white/20 rounded-2xl animate-pulse"><Server size={40}/></div>
                     <div>
-                        <h2 className="text-2xl font-black tracking-tight uppercase">Database Schema Error (PGRST204)</h2>
+                        <h2 className="text-2xl font-black tracking-tight uppercase">Database Schema Error</h2>
                         <p className="text-red-100 font-medium max-w-xl mt-1 leading-relaxed">
-                            Your Vercel deployment is connected to a Supabase project that hasn't been initialized. 
+                            Your Supabase project hasn't been fully initialized with the required tables.
                         </p>
                     </div>
                 </div>
@@ -253,7 +252,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
-      {/* Predictive Alerts Banner */}
+      {/* Predictive Alerts */}
       {balanceAlerts.length > 0 && !dbUnhealthy && (
         <div className="space-y-3">
           {balanceAlerts.map((alert) => (
@@ -280,7 +279,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                 <button 
                   onClick={() => handleDismissAlert(alert.accountId, alert.date)}
                   className={`p-2 rounded-xl transition-all ${alert.severity === 'critical' ? 'hover:bg-red-200 text-red-400' : 'hover:bg-amber-200 text-amber-400'}`}
-                  title="Dismiss alert"
                 >
                   <X size={18} />
                 </button>
@@ -290,8 +288,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       )}
 
-      {/* Flash Insights Marquee / AI Connector */}
-      {!dbUnhealthy && (anomalies.length > 0 || isAnalyzing || isAiMissing || (transactions.length === 0 && !isAiMissing)) && (
+      {/* AI Agent Marquee */}
+      {!dbUnhealthy && (anomalies.length > 0 || isAnalyzing || isAiMissing) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
              <Sparkles size={16} className="text-brand-400 animate-pulse" />
@@ -305,10 +303,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
                 </div>
               ) : isAnalyzing ? (
                 <span className="text-xs font-medium animate-pulse">המערכת מנתחת תנועות חריגות...</span>
-              ) : transactions.length === 0 ? (
-                <span className="text-xs font-medium text-brand-300">הסוכן מוכן, אך חסרים נתונים לניתוח.</span>
-              ) : anomalies.length === 0 ? (
-                <span className="text-xs font-medium text-brand-300">לא נמצאו חריגות משמעותיות ב-50 התנועות האחרונות.</span>
               ) : (
                 <div className="flex gap-8 animate-marquee whitespace-nowrap">
                   {anomalies.map((a, i) => (
@@ -365,53 +359,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Account Distribution - Expanded for all types */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-800">Account Distribution</h3>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Asset Breakdown by Value</p>
-            </div>
-          </div>
-          <div className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={100} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={24}>
-                  {accountBarData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '9px', fontWeight: '900', fill: '#475569'}} offset={10} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Predictive Snapshot */}
-        <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-gray-200 flex flex-col justify-center items-center text-center">
-            <div className="p-6 bg-white rounded-full shadow-lg mb-6"><Target size={40} className="text-brand-500"/></div>
-            <h3 className="text-xl font-black text-slate-800 mb-2">Liquidity Score</h3>
-            <p className="text-sm text-slate-500 max-w-xs font-medium leading-relaxed">
-              You are projected to have <span className="text-brand-600 font-bold">{formatCurrency(balanceHistory[balanceHistory.length-1]?.forecast || balanceHistory[balanceHistory.length-1]?.balance || 0)}</span> available in 60 days.
-            </p>
-            <div className="mt-8 flex gap-4">
-                <button 
-                  onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'forecast' }))}
-                  className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-slate-800 transition-all"
-                >
-                  View Full Forecast <ArrowRight size={14}/>
-                </button>
-            </div>
-        </div>
-      </div>
-
-      {/* Liquidity Trend Area Chart */}
+      {/* 1. Liquidity Trend Area Chart (TOP PRIORITY) */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-8">
           <div className="space-y-1">
@@ -443,13 +391,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
               <ReferenceLine x="Today" stroke="#94a3b8" strokeDasharray="3 3" />
               <Area type="monotone" dataKey="balance" stroke="#0ea5e9" strokeWidth={4} fill="url(#colorNet)" name="Actual Net" isAnimationActive={false} />
               <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={4} strokeDasharray="6 4" fill="transparent" name="Forecast Net" isAnimationActive={false} />
-              {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash'||a.type==='savings')).map(acc => (
+              {showIndividualLines && accounts.filter(a => a.currency === displayCurrency && (a.type==='checking'||a.type==='credit'||a.type==='cash')).map(acc => (
                 <Area key={acc.id} type="monotone" dataKey={acc.id} stroke={acc.color} strokeWidth={1.5} fill="transparent" name={acc.name} isAnimationActive={false} />
               ))}
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* 2. Liquid Assets Overview (Checking, Credit & Cash Only) */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Wallet size={20}/></div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800">Liquid Assets Overview</h3>
+            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Checking, Credit & Cash Distribution</p>
+          </div>
+        </div>
+        
+        {liquidAccountBarData.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-100 rounded-3xl">
+            <BarChart3 size={48} className="text-slate-200 mb-4"/>
+            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No Liquid Accounts Defined</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Add Checking or Credit accounts to see breakdown.</p>
+          </div>
+        ) : (
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={liquidAccountBarData} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} axisLine={false} tickLine={false} width={100} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} cursor={{fill: '#f8fafc'}} />
+                <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={24}>
+                  {liquidAccountBarData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                  <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{fontSize: '9px', fontWeight: '900', fill: '#475569'}} offset={10} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

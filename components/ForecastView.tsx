@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ComposedChart, BarChart, Bar, LabelList } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, Frequency } from '../types';
 import { generateFinancialInsight, createFinancialChatSession, hasValidApiKey } from '../services/geminiService';
-import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard, AlertCircle } from 'lucide-react';
+import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard, AlertCircle, Clock } from 'lucide-react';
 import { addDays, format, parseISO, startOfDay, isSameDay, startOfMonth, endOfMonth, differenceInDays, addMonths, isBefore, addWeeks, addYears } from 'date-fns';
 import { formatCurrency } from '../utils/currency';
 import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget } from '../utils/finance';
@@ -47,6 +47,31 @@ interface Scenario {
 
 const SCENARIO_COLORS = ['#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#f97316'];
 const CHART_COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#3b82f6', '#14b8a6', '#6366f1', '#a855f7'];
+
+/**
+ * Utility to extract clean error messages from Gemini SDK errors
+ */
+const parseAiError = (error: any): string => {
+    let msg = error?.message || "Unknown error";
+    
+    // Check if the error message itself is a JSON string (common in Vercel)
+    try {
+        const parsed = JSON.parse(msg);
+        if (parsed.error?.message) msg = parsed.error.message;
+    } catch (e) { /* not JSON, use original */ }
+
+    if (msg.includes("Quota exceeded") || msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
+        return "הגעת למכסת הבקשות החינמית של Gemini (20 בדקה). נא להמתין כ-15 שניות ולנסות שוב.";
+    }
+    if (msg.includes("API_KEY_MISSING")) {
+        return "מפתח ה-API (Gemini Key) חסר בהגדרות המערכת.";
+    }
+    if (msg.includes("Safety filters")) {
+        return "הבקשה נחסמה על ידי מסנני הבטיחות של גוגל.";
+    }
+    
+    return `שגיאת תקשורת: ${msg}`;
+};
 
 export const ForecastView: React.FC<ForecastViewProps> = ({ 
     transactions, 
@@ -321,10 +346,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
       if (onUpdateChatMessages) onUpdateChatMessages(finalMessages);
     } catch (e: any) {
       console.error("AI Advisor Messaging Error Details:", e);
-      let errorMsg = `שגיאה בתקשורת: ${e.message || "Unknown API error"}`;
-      if (e.message === "API_KEY_MISSING") errorMsg = "מפתח API (API_KEY) חסר במערכת. נא להגדיר ב-Vercel Environment Variables.";
-      
-      if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: errorMsg }]);
+      const friendlyError = parseAiError(e);
+      if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: friendlyError }]);
     } finally {
       setIsChatLoading(false);
     }
@@ -338,11 +361,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
         setInsight(res);
     } catch (e: any) {
         console.error("Insight Generation Error Details:", e);
-        if (e.message === "API_KEY_MISSING") {
-            setAiError("מפתח API (API_KEY) חסר במערכת. יש להגדיר אותו בהגדרות Vercel כדי להפעיל תכונות AI.");
-        } else {
-            setAiError(`אירעה שגיאה בייצור התובנות: ${e.message || "Gemini SDK Error"}`);
-        }
+        setAiError(parseAiError(e));
     } finally {
         setIsLoadingInsight(false);
     }
@@ -383,8 +402,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                     </div>
                     
                     {aiError && (
-                        <div className="bg-red-50 border border-red-100 p-6 rounded-2xl flex items-start gap-4 mb-8 text-red-800">
-                            <AlertCircle className="shrink-0 mt-0.5" size={24}/>
+                        <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex items-start gap-4 mb-8 text-amber-800 animate-fade-in shadow-sm">
+                            <Clock className="shrink-0 mt-0.5 text-amber-600" size={24}/>
                             <div className="font-bold">{aiError}</div>
                         </div>
                     )}
@@ -415,8 +434,8 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                 <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
                     <div className="flex-1 overflow-y-auto p-6 space-y-4" ref={chatContainerRef}>
                         {aiError && (
-                            <div className="bg-red-50 p-4 rounded-xl text-red-700 text-xs font-bold border border-red-100">
-                                {aiError}
+                            <div className="bg-amber-50 p-4 rounded-xl text-amber-700 text-xs font-bold border border-amber-100 flex items-center gap-2">
+                                <Clock size={14}/> {aiError}
                             </div>
                         )}
                         {persistentChatMessages.length === 0 && (
