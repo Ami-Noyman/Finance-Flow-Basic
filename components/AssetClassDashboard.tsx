@@ -8,7 +8,7 @@ import {
 import { formatCurrency } from '../utils/currency';
 import { 
     TrendingUp, CalendarDays, PieChart, BarChart3, Info, Plus, 
-    History, ArrowLeft, Target, DollarSign, Activity, Trash2, Edit2, ArrowUpRight, ArrowDownRight, User, X, Save, Users, Filter, Check, Layers
+    History, ArrowLeft, Target, DollarSign, Activity, Trash2, Edit2, ArrowUpRight, ArrowDownRight, User, X, Save, Users, Filter, Check, Layers, ShieldCheck
 } from 'lucide-react';
 import { 
     subMonths, endOfMonth, format, parseISO, getYear, startOfMonth, 
@@ -50,6 +50,12 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
   const targetAccounts = useMemo(() => accounts.filter(a => a.type === accountType), [accounts, accountType]);
   const activeAccount = useMemo(() => targetAccounts.find(a => a.id === selectedAccountId), [targetAccounts, selectedAccountId]);
   const displayCurrency = activeAccount?.currency || accounts[0]?.currency || 'ILS';
+
+  // Accumulated Pension Calculation
+  const totalPensionSum = useMemo(() => {
+    if (accountType !== 'pension') return 0;
+    return targetAccounts.reduce((sum, acc) => sum + (acc.estimatedPension || 0), 0);
+  }, [targetAccounts, accountType]);
 
   // --- Grouping and Aggregation by Owner ---
   const accountsByOwner = useMemo(() => {
@@ -404,9 +410,19 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
               <div className="p-5 bg-brand-50 text-brand-600 rounded-3xl shadow-inner"><Icon size={36} /></div>
               <div><h2 className="text-3xl font-black text-slate-800 tracking-tight">{title} Portfolio</h2><p className="text-base text-slate-500 font-medium">Tracking long-term asset accumulation</p></div>
           </div>
-          <div className="text-center md:text-right bg-slate-900 text-white p-6 rounded-3xl min-w-[280px] shadow-xl">
-              <p className="text-xs text-brand-400 font-black uppercase tracking-widest mb-1">Portfolio Total Value</p>
-              <span className="text-4xl font-black tracking-tighter">{formatCurrency(totalPortfolioValue, displayCurrency)}</span>
+          <div className="flex flex-col md:flex-row gap-4 items-stretch">
+            {accountType === 'pension' && (
+                <div className="text-center md:text-right bg-brand-600 text-white p-6 rounded-3xl min-w-[280px] shadow-xl border border-brand-500 flex flex-col justify-center">
+                    <p className="text-[10px] text-brand-100 font-black uppercase tracking-widest mb-1 flex items-center justify-center md:justify-end gap-2">
+                        <ShieldCheck size={14}/> Accrued Monthly Pension
+                    </p>
+                    <span className="text-3xl font-black tracking-tighter">{formatCurrency(totalPensionSum, displayCurrency)}</span>
+                </div>
+            )}
+            <div className="text-center md:text-right bg-slate-900 text-white p-6 rounded-3xl min-w-[280px] shadow-xl flex flex-col justify-center">
+                <p className="text-[10px] text-brand-400 font-black uppercase tracking-widest mb-1">Portfolio Total Assets</p>
+                <span className="text-4xl font-black tracking-tighter">{formatCurrency(totalPortfolioValue, displayCurrency)}</span>
+            </div>
           </div>
       </div>
 

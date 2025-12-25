@@ -61,12 +61,37 @@ const App: React.FC = () => {
   useEffect(() => {
     const supabase = initSupabase();
     if (!supabase) { setIsLoading(false); return; }
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
+    
+    // Handle initial session check with specific error handling for refresh tokens
+    supabase.auth.getSession().then(({ data: { session }, error }: any) => {
+      if (error) {
+        console.error("Auth session error:", error);
+        if (error.message?.includes("Refresh Token") || error.code === 'refresh_token_not_found') {
+          // If the token is invalid or missing, clear the session and force login
+          supabase.auth.signOut().then(() => {
+            setSession(null);
+            setIsLoading(false);
+          });
+          return;
+        }
+      }
       setSession(session);
       setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+    }).catch((err: any) => {
+      console.error("Critical session fetch failure:", err);
+      setIsLoading(false);
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        // Clear alerts on every sign out to ensure fresh analysis on next login
+        sessionStorage.removeItem('financeflow_dismissed_alerts');
+      } else {
+        setSession(session);
+      }
+    });
+
     return () => subscription.unsubscribe();
   }, [isSetup]);
 
