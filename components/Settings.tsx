@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
@@ -202,26 +201,19 @@ END $$;
 
 export const Settings: React.FC<SettingsProps> = ({ 
   accounts, categories, rules, transactions = [], recurring = [], goals = [],
-  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onRunAutoProcess,
-  onSaveRule, onDeleteRule
+  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onSaveRule, onDeleteRule
 }) => {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'rules' | 'data' | 'db'>('accounts');
+  const [activeTab, setActiveTab] = useState<'db' | 'accounts' | 'categories' | 'rules' | 'data'>('accounts');
   const [tableHealth, setTableHealth] = useState<Record<string, boolean>>({});
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const debugInfo = useMemo(() => getDebugInfo(), [activeTab]);
+  const debugInfo = useMemo(() => getDebugInfo(), []);
   const supabaseUrl = useMemo(() => getSupabaseConfig().url, []);
   
-  // Listen for navigation to the DB tab from other parts of the app
-  useEffect(() => {
-    const handleSubTab = (e: any) => {
-        if (e.detail === 'settings:db') {
-            setActiveTab('db');
-        }
-    };
-    window.addEventListener('changeTab', handleSubTab);
-    return () => window.removeEventListener('changeTab', handleSubTab);
-  }, []);
+  const hasSchemaError = useMemo(() => {
+    const keys = Object.keys(tableHealth);
+    return keys.length > 0 && keys.some(k => tableHealth[k] === false);
+  }, [tableHealth]);
 
   // Restore Modal State
   const [showRestoreModal, setShowRestoreModal] = useState(false);
@@ -256,12 +248,24 @@ export const Settings: React.FC<SettingsProps> = ({
   const [ruleValue, setRuleValue] = useState('');
   const [ruleCategory, setRuleCategory] = useState('');
 
-  const isRulesTableMissing = useMemo(() => tableHealth.transaction_rules === false, [tableHealth]);
+  const [newCategory, setNewCategory] = useState('');
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editedCategoryName, setEditedCategoryName] = useState('');
+
+  useEffect(() => {
+    const handleSubTab = (e: any) => {
+        if (e.detail === 'settings:db') {
+            setActiveTab('db');
+        }
+    };
+    window.addEventListener('changeTab', handleSubTab);
+    return () => window.removeEventListener('changeTab', handleSubTab);
+  }, []);
 
   useEffect(() => { 
     loadSubTypes(); 
     refreshHealth();
-  }, [activeTab]);
+  }, []);
 
   const loadSubTypes = async () => { const subs = await fetchAccountSubTypes(); setAvailableSubTypes(subs); };
   
@@ -345,8 +349,8 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleSaveRule = async () => {
-    if (isRulesTableMissing) {
-        alert("Action Blocked: The 'transaction_rules' table is missing. Go to the 'Database' tab and run the patch script first.");
+    if (tableHealth.transaction_rules === false) {
+        alert("Action Blocked: The 'transaction_rules' table is missing.");
         return;
     }
     if (!rulePattern || !ruleCategory || isSaving) return;
@@ -399,10 +403,6 @@ export const Settings: React.FC<SettingsProps> = ({
     reader.readAsText(file); e.target.value = '';
   };
 
-  const [newCategory, setNewCategory] = useState('');
-  const [editingCategory, setEditingCategory] = useState<string | null>(null);
-  const [editedCategoryName, setEditedCategoryName] = useState('');
-
   const handleAddCategory = () => {
     if (newCategory.trim() && !categories.includes(newCategory.trim())) {
       onUpdateCategories([...categories, newCategory.trim()].sort());
@@ -431,247 +431,33 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleOpenGeminiKey = async () => {
       if (window.aistudio) {
           await window.aistudio.openSelectKey();
-          // Instructions say to assume success and proceed/reload
           window.location.reload();
       } else {
-          alert("AI Studio environment not detected. Please use Vercel environment variables.");
+          alert("To use AI on Vercel, please add API_KEY to your environment variables.");
       }
   };
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
-      <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-      <div className="flex flex-wrap border-b border-gray-200">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">Application Settings</h2>
+        {hasSchemaError && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-xl font-black text-xs uppercase animate-pulse border border-red-200">
+            <AlertCircle size={16}/> Schema Out of Sync
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap border-b border-gray-200 gap-2">
+        <button onClick={() => setActiveTab('db')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'db' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'} ${hasSchemaError ? 'text-red-500 border-red-500 font-black' : ''}`}>
+           <Server size={14} /> Cloud & Database
+        </button>
         <button onClick={() => setActiveTab('accounts')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm ${activeTab === 'accounts' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}>Accounts</button>
         <button onClick={() => setActiveTab('categories')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm ${activeTab === 'categories' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}>Categories</button>
         <button onClick={() => setActiveTab('rules')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'rules' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Zap size={14} /> Rules</button>
         <button onClick={() => setActiveTab('data')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'data' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Database size={14} /> Backup</button>
-        <button onClick={() => setActiveTab('db')} className={`pb-2 px-4 font-bold transition-colors border-b-2 text-sm flex items-center gap-2 ${activeTab === 'db' ? 'border-brand-500 text-brand-600 font-black' : 'border-transparent text-gray-400 hover:text-gray-700'}`}><Server size={14} /> Database</button>
       </div>
       
-      {activeTab === 'accounts' && (
-        <div className="space-y-6">
-           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-               <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Wallet className="text-brand-500"/>{isEditingAccount ? 'Edit' : 'Add'} Financial Account</h3>
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                   <div className="md:col-span-2">
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Display Name</label>
-                       <input type="text" value={accName} onChange={e=>setAccName(e.target.value)} placeholder="e.g. Bank Hapoalim Main" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
-                   </div>
-                   <div className="md:col-span-1">
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Owner</label>
-                       <input type="text" value={accOwner} onChange={e=>setAccOwner(e.target.value)} placeholder="e.g. Joint, Personal" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
-                   </div>
-                   <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Currency</label>
-                       <select value={accCurrency} onChange={e=>setAccCurrency(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                           {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.code}</option>)}
-                       </select>
-                   </div>
-                   
-                   <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Category</label>
-                       <select value={accType} onChange={e=>setAccType(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                           <option value="checking">Checking (עו"ש)</option>
-                           <option value="credit">Credit Card</option>
-                           <option value="savings">Savings / Deposits</option>
-                           <option value="pension">Pension Fund</option>
-                           <option value="investment">Investment Portfolio</option>
-                           <option value="loan">Personal Loan</option>
-                           <option value="mortgage">Mortgage</option>
-                           <option value="cash">Cash</option>
-                       </select>
-                   </div>
-
-                   <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sub-Type / Class</label>
-                       <select value={accSubType} onChange={e=>setAccSubType(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                           <option value="">Generic</option>
-                           {availableSubTypes.map(s => <option key={s} value={s}>{s}</option>)}
-                           <option value="Other">+ New Type...</option>
-                       </select>
-                       {accSubType === 'Other' && (
-                           <input type="text" placeholder="Custom Sub-type" value={newCustomSubType} onChange={e=>setNewCustomSubType(e.target.value)} className="mt-2 w-full p-2 border rounded-lg text-xs font-bold outline-none"/>
-                       )}
-                   </div>
-
-                   <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Initial / Current Balance</label>
-                       <input type="number" value={accInitialBalance} onChange={e=>setAccInitialBalance(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
-                   </div>
-
-                   {accType === 'credit' && (
-                     <>
-                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Credit Limit</label><input type="number" value={accCreditLimit} onChange={e=>setAccCreditLimit(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/></div>
-                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payment Day</label><input type="number" min="1" max="31" value={accPaymentDay} onChange={e=>setAccPaymentDay(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/></div>
-                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pay From</label><select value={accPayFromId} onChange={e=>setAccPayFromId(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white outline-none"><option value="">Manual Pay</option>{accounts.filter(a=>a.type==='checking' && a.id !== isEditingAccount).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                     </>
-                   )}
-
-                   {IS_ASSET_CLASS(accType) && (
-                     <>
-                        <div className="md:col-span-1">
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Investment Track</label>
-                            <input type="text" value={accInvestmentTrack} onChange={e=>setAccInvestmentTrack(e.target.value)} placeholder="e.g. S&P 500, Bond Mix" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
-                        </div>
-                        {(accType === 'savings' || accType === 'loan' || accType === 'mortgage') && (
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Annual Interest (%)</label>
-                                <input type="number" step="0.01" value={accInterestRate} onChange={e=>setAccInterestRate(e.target.value)} placeholder="0.00%" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
-                            </div>
-                        )}
-                        {accType === 'pension' && (
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Est. Monthly Pension</label>
-                                <input type="number" value={accEstimatedPension} onChange={e=>setAccEstimatedPension(e.target.value)} placeholder="₪ 0.00" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
-                            </div>
-                        )}
-                        {(accType === 'loan' || accType === 'mortgage') && (
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Remaining Term (Months)</label>
-                                <input type="number" value={accTermMonths} onChange={e=>setAccTermMonths(e.target.value)} placeholder="e.g. 120" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
-                            </div>
-                        )}
-                     </>
-                   )}
-               </div>
-               <div className="mt-10 flex gap-4 pt-8 border-t border-slate-50">
-                   <button onClick={handleSaveAccount} disabled={isSaving} className="px-10 py-4 bg-brand-600 text-white rounded-2xl text-sm font-black transition-all flex items-center gap-2 shadow-xl shadow-brand-500/20 active:scale-95 disabled:opacity-50">
-                       {isSaving ? <Loader size={20} className="animate-spin" /> : <Save size={20}/>}
-                       {isEditingAccount ? 'Update Account Details' : 'Initialize New Account'}
-                   </button>
-                   {isEditingAccount && <button onClick={resetAccountForm} className="px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
-               </div>
-           </div>
-
-           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-               {sortedAccounts.map(acc => (
-                   <div key={acc.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
-                       <div className="flex justify-between items-start mb-6">
-                           <div className="flex items-center gap-4">
-                               <div className="w-3 h-12 rounded-full shadow-inner" style={{ backgroundColor: acc.color }} />
-                               <div>
-                                   <div className="font-black text-slate-800 flex items-center gap-2">
-                                       {acc.name}
-                                       {acc.owner && <span className="text-[9px] px-2 py-0.5 bg-slate-100 rounded-lg text-slate-500 uppercase font-black">{acc.owner}</span>}
-                                   </div>
-                                   <div className="flex items-center gap-2 mt-1">
-                                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{acc.type}</span>
-                                       {acc.subType && <span className="text-[10px] text-brand-500 font-black uppercase tracking-tighter">/ {acc.subType}</span>}
-                                   </div>
-                               </div>
-                           </div>
-                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                             <button onClick={()=>handleEditAccount(acc)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"><Edit2 size={18}/></button>
-                             <button onClick={()=>handleDeleteAccount(acc.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18}/></button>
-                           </div>
-                       </div>
-                       
-                       <div className="bg-slate-50 p-4 rounded-2xl flex justify-between items-end">
-                           <div>
-                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Initial Balance</p>
-                               <p className="text-sm font-black text-slate-900">{formatCurrency(acc.initialBalance, acc.currency)}</p>
-                           </div>
-                           {acc.interestRate && (
-                               <div className="text-right">
-                                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Rate</p>
-                                   <p className="text-xs font-black text-brand-600">{acc.interestRate}%</p>
-                               </div>
-                           )}
-                       </div>
-                   </div>
-               ))}
-           </div>
-        </div>
-      )}
-
-      {activeTab === 'rules' && (
-          <div className="space-y-6">
-              {isRulesTableMissing ? (
-                  <div className="bg-amber-50 border border-amber-200 p-8 rounded-[2.5rem] flex flex-col items-center text-center animate-fade-in">
-                      <div className="p-5 bg-amber-100 text-amber-600 rounded-3xl mb-6 shadow-sm"><AlertCircle size={48}/></div>
-                      <h3 className="text-2xl font-black text-amber-900">Rule Engine Not Initialized</h3>
-                      <p className="text-amber-800 font-medium max-w-md mt-2 mb-8">The "transaction_rules" table is missing from your database. You need to run the Repair Script to use the memorized transaction engine.</p>
-                      <button onClick={() => setActiveTab('db')} className="bg-amber-600 hover:bg-amber-700 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 uppercase tracking-widest text-xs">
-                          Go to Database Tab
-                      </button>
-                  </div>
-              ) : (
-                <>
-                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                      <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Zap className="text-brand-500"/>{isEditingRule ? 'Edit' : 'Add'} Categorization Rule</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                          <div className="md:col-span-1">
-                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payee Contains</label>
-                              <input type="text" value={rulePattern} onChange={e=>setRulePattern(e.target.value)} placeholder="e.g. Yellow" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
-                          </div>
-                          <div>
-                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Rule</label>
-                              <select value={ruleCondition} onChange={e=>setRuleCondition(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                                  <option value="any">Any Amount</option>
-                                  <option value="less">Less Than (&lt;)</option>
-                                  <option value="greater">Greater Than (&gt;)</option>
-                                  <option value="equal">Exactly Equals (=)</option>
-                              </select>
-                          </div>
-                          {ruleCondition !== 'any' && (
-                              <div>
-                                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Amount Value</label>
-                                  <input type="number" value={ruleValue} onChange={e=>setRuleValue(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
-                              </div>
-                          )}
-                          <div>
-                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Assign Category</label>
-                              <select value={ruleCategory} onChange={e=>setRuleCategory(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
-                                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
-                          </div>
-                      </div>
-                      <div className="mt-8 flex gap-4 pt-8 border-t border-slate-50">
-                          <button onClick={handleSaveRule} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
-                              {isSaving && <Loader size={16} className="animate-spin" />}
-                              {isEditingRule ? 'Update Rule' : 'Create Rule'}
-                          </button>
-                          {isEditingRule && <button onClick={resetRuleForm} className="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
-                      </div>
-                  </div>
-
-                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                      {rules.map(rule => (
-                          <div key={rule.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
-                              <div className="flex justify-between items-start mb-6">
-                                  <div className="flex items-center gap-3">
-                                      <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><Zap size={20}/></div>
-                                      <div>
-                                          <div className="font-black text-slate-800">"{rule.payeePattern}"</div>
-                                          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                              If {rule.amountCondition === 'any' ? 'any amount' : `${rule.amountCondition} ${rule.amountValue}`}
-                                          </div>
-                                      </div>
-                                  </div>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button onClick={()=>handleEditRule(rule)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl"><Edit2 size={16}/></button>
-                                      <button onClick={()=>onDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"><Trash2 size={16}/></button>
-                                  </div>
-                              </div>
-                              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</span>
-                                  <span className="text-xs font-black text-brand-600">→ {rule.category}</span>
-                              </div>
-                          </div>
-                      ))}
-                      {rules.length === 0 && (
-                        <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-300 bg-gray-50/50 rounded-[2.5rem] border-4 border-dashed border-gray-100">
-                            <Zap size={48} className="mb-4 opacity-20"/>
-                            <p className="font-black uppercase tracking-widest text-xs">No transaction rules defined yet.</p>
-                        </div>
-                      )}
-                  </div>
-                </>
-              )}
-          </div>
-      )}
-
       {activeTab === 'db' && (
         <div className="space-y-6">
             <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-2xl space-y-6">
@@ -679,12 +465,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-brand-500/20 text-brand-400 rounded-2xl"><Globe size={28}/></div>
                         <div>
-                            <h3 className="text-xl font-black">Diagnostics & Connectivity</h3>
-                            <p className="text-xs text-slate-400 font-medium">Verify environment variable injection status</p>
+                            <h3 className="text-xl font-black">Environment Connectivity</h3>
+                            <p className="text-xs text-slate-400 font-medium">Verify variable injection status</p>
                         </div>
                     </div>
                     <button onClick={handleTestConnection} disabled={isTestingConnection} className="flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 rounded-2xl text-xs font-black uppercase transition-all shadow-lg active:scale-95">
-                        <Activity size={16} className={isTestingConnection ? 'animate-spin' : ''}/> {isTestingConnection ? 'Testing...' : 'Test Cloud Connection'}
+                        <Activity size={16} className={isTestingConnection ? 'animate-spin' : ''}/> {isTestingConnection ? 'Testing...' : 'Test Connection'}
                     </button>
                 </div>
                 
@@ -692,7 +478,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Deployment Mode</p>
                         <div className="text-sm font-black flex items-center gap-2">
-                           <span className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') ? 'bg-green-500' : 'bg-orange-500'}`}></span>
+                           <span className={`w-2 h-2 rounded-full ${debugInfo.source.includes('Vercel') || debugInfo.source.includes('Environment') ? 'bg-green-500' : 'bg-orange-500'}`}></span>
                            <span>{debugInfo.source}</span>
                         </div>
                     </div>
@@ -719,14 +505,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                 </div>
 
-                {/* GEMINI AI SPECIFIC SETUP */}
                 <div className="mt-10 pt-8 border-t border-slate-800">
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-orange-500/20 text-orange-400 rounded-2xl"><Sparkles size={28}/></div>
                             <div>
-                                <h3 className="text-xl font-black">Gemini AI Connectivity</h3>
-                                <p className="text-xs text-slate-400 font-medium">Power your insights, chat, and automated categorization</p>
+                                <h3 className="text-xl font-black">AI Insights & Advisor</h3>
+                                <p className="text-xs text-slate-400 font-medium">Power your automated features</p>
                             </div>
                         </div>
                     </div>
@@ -736,22 +521,18 @@ export const Settings: React.FC<SettingsProps> = ({
                             <div className="flex items-start gap-4">
                                 <AlertTriangle className="text-orange-400 shrink-0 mt-1" size={24}/>
                                 <div>
-                                    <h4 className="text-sm font-black text-orange-400 uppercase tracking-tight">AI Key Not Detected</h4>
+                                    <h4 className="text-sm font-black text-orange-400 uppercase tracking-tight">Gemini Key Missing</h4>
                                     <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                                        You are currently running without a Gemini API Key. To fix this:
+                                        For production, add <code>API_KEY</code> to Environment Variables.
                                     </p>
-                                    <ul className="text-xs text-slate-300 mt-2 list-disc list-inside space-y-1 ml-1">
-                                        <li><strong>Vercel Users:</strong> Add <code>API_KEY</code> to your Environment Variables and <strong>REDEPLOY</strong>.</li>
-                                        <li><strong>Standard Users:</strong> Use the secure connection dialog below.</li>
-                                    </ul>
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-4 pt-4">
                                 <button onClick={handleOpenGeminiKey} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 transition-all shadow-xl shadow-orange-600/20">
-                                    <Key size={16}/> Connect via Key Dialog
+                                    <Key size={16}/> Use Select Key Dialog
                                 </button>
                                 <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-6 py-4 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 border border-slate-700 transition-all">
-                                    <ExternalLink size={16}/> Billing Documentation
+                                    <ExternalLink size={16}/> Billing Docs
                                 </a>
                             </div>
                         </div>
@@ -761,7 +542,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <div className="p-3 bg-green-500/20 text-green-400 rounded-full"><Check size={20}/></div>
                                 <div>
                                     <h4 className="text-sm font-black text-green-400">Gemini AI Active</h4>
-                                    <p className="text-xs text-slate-400">Your account is successfully linked to the Google GenAI SDK.</p>
+                                    <p className="text-xs text-slate-400">AI analysis features are enabled.</p>
                                 </div>
                             </div>
                             <button onClick={handleOpenGeminiKey} className="text-xs font-black text-slate-400 hover:text-white uppercase tracking-widest border border-slate-700 px-4 py-2 rounded-lg transition-all">Change Key</button>
@@ -771,15 +552,12 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
 
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8 relative overflow-hidden">
-                {/* Aggressive warning if tables are missing */}
-                {Object.values(tableHealth).some(v => v === false) && (
-                    <div className="absolute inset-0 bg-red-600/5 backdrop-blur-[1px] z-10 pointer-events-none border-4 border-red-500/20 rounded-3xl"></div>
-                )}
-
                 <div className="flex justify-between items-start">
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Database Schema Health</h3>
-                        <p className="text-sm text-slate-500 mt-1 font-medium">Project: <strong>{supabaseUrl}</strong></p>
+                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Server className="text-brand-500"/> Supabase Schema Health</h3>
+                        <p className="text-sm text-slate-500 mt-1 font-medium leading-relaxed">
+                            Monitor the availability of tables in your Supabase project.
+                        </p>
                     </div>
                     <button onClick={refreshHealth} disabled={isCheckingHealth} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-black uppercase transition-all z-20">
                         <RefreshCw size={14} className={isCheckingHealth ? 'animate-spin' : ''}/> {isCheckingHealth ? 'Checking...' : 'Refresh Health'}
@@ -798,133 +576,154 @@ export const Settings: React.FC<SettingsProps> = ({
                     ))}
                 </div>
 
-                <div className="space-y-4 pt-4 border-t border-slate-50 relative z-20">
-                    <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl flex gap-5 items-start">
-                        <div className="bg-red-500 text-white p-3 rounded-2xl shadow-lg shadow-red-500/20 shrink-0"><HardDrive size={24}/></div>
-                        <div className="space-y-2">
-                           <h4 className="text-lg font-black text-red-900">CRITICAL: Table Missing Errors (PGRST204/205)</h4>
-                           <p className="text-sm text-red-800 font-medium leading-relaxed">
-                               If any table above says <strong>MISSING</strong>, your app will not function and AI will have no data to analyze. 
-                               This happens when you connect a fresh project but haven't run the setup script.
-                           </p>
-                           <div className="pt-2 space-y-4">
-                               <p className="text-xs text-red-900 font-black uppercase tracking-widest">Follow these steps:</p>
-                               <ol className="text-sm text-red-800 list-decimal list-inside space-y-2 ml-1 font-medium">
-                                   <li>Copy the entire SQL script below.</li>
-                                   <li>Go to your <a href="https://app.supabase.com" target="_blank" className="underline font-black hover:text-red-600">Supabase Dashboard</a>.</li>
-                                   <li>Select project <strong>{supabaseUrl.split('.')[0].replace('https://', '')}</strong>.</li>
-                                   <li>Open <strong>SQL Editor</strong> &rarr; <strong>New Query</strong>.</li>
-                                   <li>Paste and click <strong>Run</strong>.</li>
-                               </ol>
-                           </div>
+                {hasSchemaError && (
+                    <div className="space-y-4 pt-4 border-t border-slate-50 relative z-20 animate-fade-in">
+                        <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl flex gap-5 items-start">
+                            <div className="bg-red-500 text-white p-3 rounded-2xl shadow-lg shadow-red-500/20 shrink-0"><HardDrive size={24}/></div>
+                            <div className="space-y-2">
+                            <h4 className="text-lg font-black text-red-900 uppercase tracking-tight">CRITICAL: SQL REPAIR REQUIRED</h4>
+                            <div className="text-sm text-red-800 font-medium leading-relaxed">
+                                <p>Tables are missing from your project. Follow these steps:</p>
+                                <ol className="list-decimal list-inside space-y-2 mt-4 ml-1">
+                                    <li>Copy the script below.</li>
+                                    <li>Open <a href="https://app.supabase.com" target="_blank" className="underline font-black">Supabase Dashboard</a>.</li>
+                                    <li>Click <strong>SQL Editor</strong> &rarr; <strong>New Query</strong>.</li>
+                                    <li>Paste script and click <strong>RUN</strong>.</li>
+                                </ol>
+                            </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-between items-center mt-6">
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Initialization & Patch Script</h4>
+                            <button onClick={copySql} className="text-xs font-black text-brand-600 flex items-center gap-2 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-all border border-brand-200">
+                                <Copy size={14}/> Copy SQL
+                            </button>
+                        </div>
+                        <div className="p-6 bg-slate-900 rounded-2xl relative overflow-hidden group border border-slate-700 shadow-2xl">
+                            <pre className="text-[11px] font-mono text-brand-300 overflow-x-auto max-h-80 custom-scrollbar leading-relaxed">
+                                {FULL_SCHEMA_SQL}
+                            </pre>
                         </div>
                     </div>
-
-                    <div className="flex justify-between items-center mt-6">
-                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Repair / Patch Script</h4>
-                        <button onClick={copySql} className="text-xs font-black text-brand-600 flex items-center gap-2 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-all border border-brand-200">
-                            <Copy size={14}/> Copy All SQL
-                        </button>
-                    </div>
-                    <div className="p-6 bg-slate-900 rounded-2xl relative overflow-hidden group border border-slate-700 shadow-2xl">
-                        <pre className="text-[11px] font-mono text-brand-300 overflow-x-auto max-h-80 custom-scrollbar leading-relaxed">
-                            {FULL_SCHEMA_SQL}
-                        </pre>
-                    </div>
-                </div>
+                )}
             </div>
         </div>
       )}
       
+      {activeTab === 'accounts' && (
+        <div className="space-y-6">
+           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+               <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Wallet className="text-brand-500"/>{isEditingAccount ? 'Edit' : 'Add'} Account</h3>
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                   <div className="md:col-span-2">
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Name</label>
+                       <input type="text" value={accName} onChange={e=>setAccName(e.target.value)} placeholder="e.g. Bank Account" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 transition-all outline-none"/>
+                   </div>
+                   <div className="md:col-span-1">
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Owner</label>
+                       <input type="text" value={accOwner} onChange={e=>setAccOwner(e.target.value)} placeholder="e.g. Personal" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                   </div>
+                   <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Currency</label>
+                       <select value={accCurrency} onChange={e=>setAccCurrency(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white">
+                           {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.code}</option>)}
+                       </select>
+                   </div>
+               </div>
+               <div className="mt-10 flex gap-4 pt-8 border-t border-slate-50">
+                   <button onClick={handleSaveAccount} disabled={isSaving} className="px-10 py-4 bg-brand-600 text-white rounded-2xl text-sm font-black transition-all flex items-center gap-2 shadow-xl shadow-brand-500/20 active:scale-95 disabled:opacity-50">
+                       {isSaving ? <Loader size={20} className="animate-spin" /> : <Save size={20}/>}
+                       {isEditingAccount ? 'Update' : 'Save'}
+                   </button>
+                   {isEditingAccount && <button onClick={resetAccountForm} className="px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl text-sm font-black transition-all">Cancel</button>}
+               </div>
+           </div>
+        </div>
+      )}
+
       {activeTab === 'categories' && (
         <div className="space-y-6">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-            <h3 className="font-black text-xl mb-6 flex items-center gap-3"><Tag className="text-brand-500"/>Manage Global Categories</h3>
+            <h3 className="font-black text-xl mb-6 flex items-center gap-3"><Tag className="text-brand-500"/>Categories</h3>
             <div className="flex gap-3">
-              <input type="text" placeholder="Enter new category name..." value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} className="flex-1 p-3 border rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10 transition-all" />
-              <button onClick={handleAddCategory} className="px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-black flex items-center gap-2 shadow-lg active:scale-95 transition-all"><Plus size={18} /> Add Category</button>
+              <input type="text" placeholder="New category..." value={newCategory} onChange={e => setNewCategory(e.target.value)} className="flex-1 p-3 border rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10 transition-all" />
+              <button onClick={handleAddCategory} className="px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-black flex items-center gap-2 shadow-lg">Add</button>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {categories.map(cat => (
               <div key={cat} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
-                {editingCategory === cat ? (
-                  <div className="space-y-3">
-                    <input type="text" autoFocus value={editedCategoryName} onChange={e => setEditedCategoryName(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold outline-none" />
-                    <div className="flex gap-2"><button onClick={handleSaveRename} className="flex-1 py-1.5 bg-green-50 text-green-600 rounded-lg"><Check size={14}/></button><button onClick={() => setEditingCategory(null)} className="flex-1 py-1.5 bg-red-50 text-red-600 rounded-lg"><X size={14}/></button></div>
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-sm font-black text-gray-700 truncate">{cat}</span>
-                    <div className="flex justify-end gap-1 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setEditingCategory(cat); setEditedCategoryName(cat); }} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"><Edit2 size={14}/></button>
-                      <button onClick={() => confirm(`Delete category "${cat}"?`) && onUpdateCategories(categories.filter(c => c !== cat))} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
-                    </div>
-                  </>
-                )}
+                <span className="text-sm font-black text-gray-700 truncate">{cat}</span>
+                <button onClick={() => confirm(`Delete "${cat}"?`) && onUpdateCategories(categories.filter(c => c !== cat))} className="mt-4 p-2 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button>
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {activeTab === 'rules' && (
+          <div className="space-y-6">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                  <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Zap className="text-brand-500"/>Rules</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="md:col-span-1">
+                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payee Contains</label>
+                          <input type="text" value={rulePattern} onChange={e=>setRulePattern(e.target.value)} placeholder="e.g. Netflix" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                      </div>
+                      <div>
+                          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Assign Category</label>
+                          <select value={ruleCategory} onChange={e=>setRuleCategory(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white">
+                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                      </div>
+                  </div>
+                  <div className="mt-8 flex gap-4 pt-8 border-t border-slate-50">
+                      <button onClick={handleSaveRule} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg">
+                          {isSaving && <Loader size={16} className="animate-spin" />} Save Rule
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {activeTab === 'data' && (
         <div className="bg-white p-10 rounded-[2.5rem] border border-gray-100 shadow-sm text-center space-y-10">
-            <h3 className="text-2xl font-black text-slate-800">Cloud Backup & Synchronization</h3>
+            <h3 className="text-2xl font-black text-slate-800">Backup</h3>
             <div className="grid md:grid-cols-2 gap-8">
                 <button onClick={handleExportData} className="p-10 border rounded-[2.5rem] hover:bg-slate-50 transition-all text-left flex items-center gap-8 group shadow-sm hover:shadow-md">
                     <div className="p-5 bg-brand-50 text-brand-600 rounded-3xl group-hover:scale-110 transition-transform"><Download size={40}/></div>
-                    <div><div className="font-black text-xl text-slate-800">Export Full Backup</div><div className="text-sm text-gray-500 font-medium">Download local JSON snapshot</div></div>
+                    <div><div className="font-black text-xl text-slate-800">Export Backup</div></div>
                 </button>
                 <button onClick={() => { setRestoreStage('upload'); setShowRestoreModal(true); }} className="p-10 border rounded-[2.5rem] hover:bg-slate-50 transition-all text-left flex items-center gap-8 group shadow-sm hover:shadow-md">
                     <div className="p-5 bg-green-50 text-green-600 rounded-3xl group-hover:scale-110 transition-transform"><Upload size={40}/></div>
-                    <div><div className="font-black text-xl text-slate-800">Restore from File</div><div className="text-sm text-gray-500 font-medium">Upload JSON and overwrite cloud</div></div>
+                    <div><div className="font-black text-xl text-slate-800">Restore File</div></div>
                 </button>
             </div>
             <div className="bg-slate-900 p-8 rounded-[2rem] text-white flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-5">
                     <div className="p-4 bg-white/10 rounded-2xl"><UserMinus size={32} className="text-red-400"/></div>
                     <div className="text-left">
-                        <h4 className="font-black text-lg">Wipe Personal Data</h4>
-                        <p className="text-xs text-slate-400 font-medium">Irreversibly delete all records from your cloud account.</p>
+                        <h4 className="font-black text-lg">Wipe Data</h4>
+                        <p className="text-xs text-slate-400 font-medium">Irreversibly delete all records.</p>
                     </div>
                 </div>
-                <button onClick={() => confirm("WARNING: This will permanently delete ALL data from Supabase. Continue?") && clearAllUserData().then(() => window.location.reload())} className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black transition-all active:scale-95 shadow-lg shadow-red-500/20">Purge Cloud Store</button>
+                <button onClick={() => confirm("Wipe all cloud data?") && clearAllUserData().then(() => window.location.reload())} className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black transition-all">Purge Cloud</button>
             </div>
         </div>
       )}
 
       {showRestoreModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[120] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-fade-in border border-slate-100">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100">
             <div className="p-8 border-b flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Database className="text-brand-500"/> Restore Cloud Backup</h3>
-              <button onClick={() => setShowRestoreModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={24}/></button>
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">Restore Backup</h3>
+              <button onClick={() => setShowRestoreModal(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
             </div>
-            <div className="p-8">
-              {restoreStage === 'upload' ? (
-                <div className="text-center space-y-6 py-8">
-                  <div onClick={() => fileInputRef.current?.click()} className="border-4 border-dashed border-slate-100 rounded-[2.5rem] p-16 hover:border-brand-200 hover:bg-brand-50 transition-all cursor-pointer group">
-                    <FileJson size={64} className="mx-auto text-slate-200 group-hover:text-brand-400 mb-6" />
-                    <p className="font-black text-slate-400 group-hover:text-brand-600 uppercase tracking-widest text-sm">Drop backup JSON or Click to Select</p>
-                    <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-8">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-6 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Accounts</p><p className="text-3xl font-black text-slate-800">{restorePayload?.accounts?.length || 0}</p></div>
-                    <div className="p-6 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Transactions</p><p className="text-3xl font-black text-slate-800">{restorePayload?.transactions?.length || 0}</p></div>
-                  </div>
-                  <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex gap-4">
-                    <AlertTriangle className="text-orange-600 shrink-0" size={24}/><p className="text-orange-800 text-xs font-bold leading-relaxed">Proceeding will irreversibly replace your current cloud data with the contents of this backup file. We recommend exporting a current backup first.</p>
-                  </div>
-                  <div className="flex gap-4">
-                    <button onClick={() => setRestoreStage('upload')} className="flex-1 px-6 py-4 bg-slate-100 rounded-2xl font-black text-slate-600 hover:bg-slate-200 transition-all">Back</button>
-                    <button onClick={performRestore} disabled={isSaving} className="flex-[2] px-6 py-4 bg-brand-600 text-white rounded-2xl font-black shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">{isSaving && <Loader size={20} className="animate-spin" />} {isSaving ? 'Restoring Cloud...' : 'Confirm Overwrite'}</button>
-                  </div>
-                </div>
-              )}
+            <div className="p-8 text-center py-12">
+               <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+               <button onClick={() => fileInputRef.current?.click()} className="bg-brand-600 text-white px-10 py-4 rounded-2xl font-black shadow-xl">Select File</button>
+               {restorePayload && <button onClick={performRestore} className="mt-4 block w-full text-red-600 font-bold underline">Confirm Overwrite</button>}
             </div>
           </div>
         </div>

@@ -5,11 +5,12 @@ import {
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
-import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain, Database } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Brain, Database, Server, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies, getApiKey } from '../services/geminiService';
+import { checkTableHealth } from '../services/storageService';
 
 // Use sessionStorage so alerts reset when the session ends or user logs out
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
@@ -28,8 +29,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [anomalies, setAnomalies] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAiMissing, setIsAiMissing] = useState(!getApiKey());
+  const [dbUnhealthy, setDbUnhealthy] = useState(false);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   
-  // Initialize dismissed alerts from sessionStorage for per-session persistence
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
     try {
       const stored = sessionStorage.getItem(DISMISSED_ALERTS_KEY);
@@ -39,7 +41,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     }
   });
 
+  const checkHealth = async () => {
+    setIsCheckingHealth(true);
+    const health = await checkTableHealth();
+    setDbUnhealthy(Object.values(health).some(v => v === false));
+    setIsCheckingHealth(false);
+  };
+
   useEffect(() => {
+    checkHealth();
     const key = getApiKey();
     if (key) {
       setIsAiMissing(false);
@@ -49,9 +59,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
           setAnomalies(res);
           setIsAnalyzing(false);
         });
-      } else {
-        setAnomalies([]);
-        setIsAnalyzing(false);
       }
     } else {
       setIsAiMissing(true);
@@ -60,7 +67,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   const balanceAlerts = useMemo(() => {
     const rawAlerts = calculateBalanceAlerts(accounts, transactions, recurring);
-    // Filter out alerts that the user has dismissed in this SPECIFIC session
     return rawAlerts.filter(alert => !dismissedAlerts.includes(`${alert.accountId}-${alert.date}`));
   }, [accounts, transactions, recurring, dismissedAlerts]);
 
@@ -212,8 +218,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   return (
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
       
+      {/* CRITICAL: Database Missing Alert */}
+      {dbUnhealthy && (
+        <div className="bg-red-600 text-white p-6 rounded-[2rem] shadow-2xl border-4 border-red-500/50 animate-fade-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><Database size={120}/></div>
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-6">
+                    <div className="p-4 bg-white/20 rounded-2xl animate-pulse"><Server size={40}/></div>
+                    <div>
+                        <h2 className="text-2xl font-black tracking-tight uppercase">Database Schema Error (PGRST204)</h2>
+                        <p className="text-red-100 font-medium max-w-xl mt-1 leading-relaxed">
+                            Your Vercel deployment is connected to a Supabase project that hasn't been initialized. 
+                            AI features and transactions are currently blocked.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-3 shrink-0">
+                    <button onClick={checkHealth} className="p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+                        <RefreshCw size={24} className={isCheckingHealth ? 'animate-spin' : ''}/>
+                    </button>
+                    <button 
+                        onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings:db' }))} 
+                        className="bg-white text-red-600 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl hover:bg-red-50 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                        Go to Repair Tab <ArrowRight size={18}/>
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Predictive Alerts Banner */}
-      {balanceAlerts.length > 0 && (
+      {balanceAlerts.length > 0 && !dbUnhealthy && (
         <div className="space-y-3">
           {balanceAlerts.map((alert) => (
             <div key={`${alert.accountId}-${alert.date}`} className={`p-4 rounded-2xl border flex items-center justify-between gap-4 shadow-sm animate-fade-in ${alert.severity === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
@@ -250,7 +286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       )}
 
       {/* Flash Insights Marquee / AI Connector */}
-      {(anomalies.length > 0 || isAnalyzing || isAiMissing || (transactions.length === 0 && !isAiMissing)) && (
+      {!dbUnhealthy && (anomalies.length > 0 || isAnalyzing || isAiMissing || (transactions.length === 0 && !isAiMissing)) && (
         <div className="bg-brand-900 text-white p-3 rounded-2xl flex items-center gap-4 overflow-hidden border border-brand-700 shadow-xl">
            <div className="flex items-center gap-2 px-3 border-r border-brand-700 whitespace-nowrap shrink-0">
              <Sparkles size={16} className="text-brand-400 animate-pulse" />
@@ -260,35 +296,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
               {isAiMissing ? (
                 <div className="flex items-center justify-between w-full">
                   <span className="text-xs font-medium text-brand-300">AI analysis is disabled. Connect your Gemini key in Settings to see flash insights.</span>
-                  <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings' }))} className="text-[10px] font-black uppercase bg-brand-600 px-3 py-1 rounded-lg hover:bg-brand-500 transition-colors">Connect</button>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings:db' }))} className="text-[10px] font-black uppercase bg-brand-600 px-3 py-1 rounded-lg hover:bg-brand-500 transition-colors">Connect</button>
                 </div>
               ) : isAnalyzing ? (
                 <span className="text-xs font-medium animate-pulse">המערכת מנתחת תנועות חריגות...</span>
               ) : transactions.length === 0 ? (
-                <div className="flex items-center justify-between w-full">
-                   <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-brand-300">הסוכן מוכן, אך חסרים נתונים לניתוח. אם מופיעה שגיאת Database, יש להפעיל את התיקון.</span>
-                      <div className="p-1 bg-amber-500/20 text-amber-400 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-tighter shrink-0"><Database size={10}/> Schema Warning</div>
-                   </div>
-                   <button 
-                     onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings:db' }))} 
-                     className="text-[10px] font-black uppercase bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500 transition-colors whitespace-nowrap ml-4 shadow-lg shadow-amber-900/20"
-                   >
-                     Fix Database Now
-                   </button>
-                </div>
+                <span className="text-xs font-medium text-brand-300">הסוכן מוכן, אך חסרים נתונים לניתוח.</span>
               ) : anomalies.length === 0 ? (
                 <span className="text-xs font-medium text-brand-300">לא נמצאו חריגות משמעותיות ב-50 התנועות האחרונות.</span>
               ) : (
                 <div className="flex gap-8 animate-marquee whitespace-nowrap">
                   {anomalies.map((a, i) => (
                     <span key={i} className="text-xs font-bold flex items-center gap-2">
-                       <AlertCircle size={14} className="text-orange-400"/> {a}
-                    </span>
-                  ))}
-                  {/* Duplicate for smooth scroll */}
-                  {anomalies.map((a, i) => (
-                    <span key={`dup-${i}`} className="text-xs font-bold flex items-center gap-2">
                        <AlertCircle size={14} className="text-orange-400"/> {a}
                     </span>
                   ))}
@@ -370,56 +389,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
-
-      {/* Bottom Grid: Account Balances & Savings Goals */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-              <h3 className="text-xl font-bold text-gray-800 mb-8 flex items-center gap-2"><Wallet size={20} className="text-brand-500"/>Account Balances</h3>
-              <div className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={accountBarData} layout="vertical" margin={{ left: 20, right: 60 }}>
-                    <XAxis type="number" hide />
-                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} width={100} />
-                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#f8fafc' }} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Balance']} />
-                    <Bar dataKey="balance" radius={[0, 10, 10, 0]} barSize={28}>
-                      {accountBarData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                      <LabelList dataKey="balance" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '11px', fontWeight: 'bold', fill: '#64748b' }} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-              <div className="flex justify-between items-center mb-8">
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Target size={20} className="text-orange-500"/>Active Savings Goals</h3>
-              </div>
-              <div className="space-y-6 overflow-y-auto max-h-[350px] pr-2 custom-scrollbar">
-                  {goals.filter(g => g.isActive).length > 0 ? goals.filter(g => g.isActive).map(goal => {
-                    const percent = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100);
-                    return (
-                      <div key={goal.id} className="space-y-2">
-                        <div className="flex justify-between items-end">
-                           <div>
-                             <p className="text-xs font-black text-slate-800">{goal.name}</p>
-                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{goal.deadline ? `Target: ${goal.deadline}` : 'Long-term'}</p>
-                           </div>
-                           <p className="text-[10px] font-black text-slate-700">{formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}</p>
-                        </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                           <div className="h-full transition-all duration-1000 rounded-full" style={{ width: `${percent}%`, backgroundColor: goal.color }} />
-                        </div>
-                      </div>
-                    );
-                  }) : (
-                    <div className="flex flex-col items-center justify-center py-10 text-slate-300">
-                      <Target size={48} className="opacity-20 mb-2" />
-                      <p className="text-xs font-black uppercase tracking-widest">No Active Goals</p>
-                    </div>
-                  )}
-              </div>
-          </div>
       </div>
     </div>
   );

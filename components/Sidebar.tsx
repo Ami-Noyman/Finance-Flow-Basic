@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { LayoutDashboard, List, Repeat, TrendingUp, PieChart, Settings as SettingsIcon, PiggyBank, ShieldCheck, BrainCircuit, CreditCard, Target } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, List, Repeat, TrendingUp, PieChart, Settings as SettingsIcon, PiggyBank, ShieldCheck, BrainCircuit, CreditCard, Target, AlertCircle } from 'lucide-react';
+import { checkTableHealth } from '../services/storageService';
 
 interface SidebarProps {
   activeTab: string;
@@ -8,6 +9,19 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+  const [dbUnhealthy, setDbUnhealthy] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      const health = await checkTableHealth();
+      const isMissing = Object.values(health).some(v => v === false);
+      setDbUnhealthy(isMissing);
+    };
+    check();
+    const interval = setInterval(check, 10000); // Check every 10s
+    return () => clearInterval(interval);
+  }, []);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: List },
@@ -18,8 +32,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'savings', label: 'Savings', icon: PiggyBank },
     { id: 'liabilities', label: 'Liabilities', icon: CreditCard },
     { id: 'pension', label: 'Pension', icon: ShieldCheck },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon, alert: dbUnhealthy },
   ];
+
+  const handleTabClick = (id: string) => {
+    // If user clicks Settings and DB is unhealthy, force the DB sub-tab
+    if (id === 'settings' && dbUnhealthy) {
+      setActiveTab('settings');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings:db' }));
+      }, 50);
+    } else {
+      setActiveTab(id);
+    }
+  };
 
   return (
     <div className="w-20 lg:w-64 bg-slate-900 h-full flex flex-col flex-shrink-0 transition-all duration-300 shadow-xl z-20">
@@ -40,8 +66,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center p-3 rounded-lg transition-all duration-200 group
+              onClick={() => handleTabClick(item.id)}
+              className={`w-full flex items-center p-3 rounded-lg transition-all duration-200 group relative
                 ${isActive 
                   ? 'bg-orange-600 text-white shadow-md' 
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -52,6 +78,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
               <span className={`ml-3 font-medium hidden lg:block ${isActive ? 'text-white' : ''}`}>
                 {item.label}
               </span>
+              {item.alert && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white animate-pulse">
+                  !
+                </div>
+              )}
             </button>
           );
         })}

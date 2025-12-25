@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
 
@@ -13,8 +14,8 @@ declare global {
   }
 
   interface Window {
-    // Removed readonly to avoid modifier mismatch with the environment's global declaration.
-    aistudio: AIStudio;
+    // Fix: Added readonly to match the environment's global declaration and resolve modifier conflict.
+    readonly aistudio: AIStudio;
   }
 }
 
