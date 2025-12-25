@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal } from '../types';
 import { CURRENCIES, formatCurrency } from '../utils/currency';
-import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon } from 'lucide-react';
 import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection } from '../services/storageService';
 import { initSupabase, getDebugInfo } from '../services/supabaseClient';
 import { sortAccounts } from '../utils/finance';
@@ -228,6 +228,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [accInvestmentTrack, setAccInvestmentTrack] = useState('');
   const [accEstimatedPension, setAccEstimatedPension] = useState('');
   const [accInterestRate, setAccInterestRate] = useState('');
+  const [accTermMonths, setAccTermMonths] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => { 
@@ -260,7 +261,7 @@ export const Settings: React.FC<SettingsProps> = ({
         const initialBalanceVal = parseFloat(accInitialBalance) || 0;
         const creditLimitVal = parseFloat(accCreditLimit) || 0;
         const paymentDayVal = parseInt(accPaymentDay) || undefined;
-        let finalSubType = IS_ASSET_CLASS(accType) ? accSubType : undefined;
+        let finalSubType = accSubType;
         
         if (finalSubType === 'Other' && newCustomSubType.trim()) {
             finalSubType = newCustomSubType.trim();
@@ -276,15 +277,16 @@ export const Settings: React.FC<SettingsProps> = ({
             owner: accOwner.trim() || undefined, 
             currency: accCurrency, 
             type: accType, 
-            subType: finalSubType, 
+            subType: finalSubType || undefined, 
             color: isEditingAccount ? (accounts.find(a=>a.id===isEditingAccount)?.color || '#0ea5e9') : '#' + Math.floor(Math.random()*16777215).toString(16), 
             initialBalance: initialBalanceVal, 
-            creditLimit: creditLimitVal, 
-            paymentDay: paymentDayVal, 
-            payFromAccountId: accPayFromId || undefined, 
-            investmentTrack: accInvestmentTrack || undefined, 
-            estimatedPension: parseFloat(accEstimatedPension) || undefined,
-            interestRate: parseFloat(accInterestRate) || undefined
+            creditLimit: accType === 'credit' ? creditLimitVal : undefined, 
+            paymentDay: accType === 'credit' ? paymentDayVal : undefined, 
+            payFromAccountId: accType === 'credit' ? (accPayFromId || undefined) : undefined, 
+            investmentTrack: IS_ASSET_CLASS(accType) ? (accInvestmentTrack || undefined) : undefined, 
+            estimatedPension: accType === 'pension' ? (parseFloat(accEstimatedPension) || undefined) : undefined,
+            interestRate: (accType === 'savings' || accType === 'loan' || accType === 'mortgage') ? (parseFloat(accInterestRate) || undefined) : undefined,
+            termMonths: (accType === 'loan' || accType === 'mortgage') ? (parseInt(accTermMonths) || undefined) : undefined
         };
         await onSaveAccount(accountData); 
         resetAccountForm();
@@ -305,12 +307,13 @@ export const Settings: React.FC<SettingsProps> = ({
     setAccInvestmentTrack(acc.investmentTrack || ''); 
     setAccEstimatedPension(acc.estimatedPension?.toString() || ''); 
     setAccInterestRate(acc.interestRate?.toString() || '');
+    setAccTermMonths(acc.termMonths?.toString() || '');
   };
 
   const handleDeleteAccount = (id: string) => { if (confirm("Delete this account and all its transactions?")) onDeleteAccount(id); };
   
   const resetAccountForm = () => { 
-    setAccName(''); setAccOwner(''); setAccCurrency('ILS'); setAccType('checking'); setAccSubType(''); setNewCustomSubType(''); setAccInitialBalance(''); setAccCreditLimit(''); setAccPaymentDay(''); setAccPayFromId(''); setAccInvestmentTrack(''); setAccEstimatedPension(''); setAccInterestRate('');
+    setAccName(''); setAccOwner(''); setAccCurrency('ILS'); setAccType('checking'); setAccSubType(''); setNewCustomSubType(''); setAccInitialBalance(''); setAccCreditLimit(''); setAccPaymentDay(''); setAccPayFromId(''); setAccInvestmentTrack(''); setAccEstimatedPension(''); setAccInterestRate(''); setAccTermMonths('');
     setIsEditingAccount(null); 
   };
 
@@ -381,40 +384,133 @@ export const Settings: React.FC<SettingsProps> = ({
       
       {activeTab === 'accounts' && (
         <div className="space-y-6">
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-               <h3 className="font-bold text-lg mb-4">{isEditingAccount ? 'Edit' : 'Add'} Account</h3>
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                   <div className="md:col-span-1"><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Account Name</label><input type="text" value={accName} onChange={e=>setAccName(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none"/></div>
-                   <div className="md:col-span-1"><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Owner</label><input type="text" value={accOwner} onChange={e=>setAccOwner(e.target.value)} placeholder="e.g. Joint, Private" className="w-full p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none"/></div>
-                   <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Currency</label><select value={accCurrency} onChange={e=>setAccCurrency(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-brand-500 outline-none">{CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.code}</option>)}</select></div>
-                   <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Account Type</label><select value={accType} onChange={e=>setAccType(e.target.value as any)} className="w-full p-2.5 border rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-brand-500 outline-none"><option value="checking">Checking (עו"ש)</option><option value="credit">Credit Card</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="investment">Investment</option><option value="pension">Pension</option><option value="loan">Personal Loan</option><option value="mortgage">Mortgage</option></select></div>
-                   <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Initial Balance</label><input type="number" value={accInitialBalance} onChange={e=>setAccInitialBalance(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none"/></div>
+           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+               <h3 className="font-black text-xl mb-8 flex items-center gap-3"><Wallet className="text-brand-500"/>{isEditingAccount ? 'Edit' : 'Add'} Financial Account</h3>
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                   <div className="md:col-span-2">
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Display Name</label>
+                       <input type="text" value={accName} onChange={e=>setAccName(e.target.value)} placeholder="e.g. Bank Hapoalim Main" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
+                   </div>
+                   <div className="md:col-span-1">
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Owner</label>
+                       <input type="text" value={accOwner} onChange={e=>setAccOwner(e.target.value)} placeholder="e.g. Joint, Personal" className="w-full p-3 border rounded-xl text-sm font-bold focus:ring-4 focus:ring-brand-500/10 outline-none transition-all"/>
+                   </div>
+                   <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Currency</label>
+                       <select value={accCurrency} onChange={e=>setAccCurrency(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                           {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.code}</option>)}
+                       </select>
+                   </div>
+                   
+                   <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Account Category</label>
+                       <select value={accType} onChange={e=>setAccType(e.target.value as any)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                           <option value="checking">Checking (עו"ש)</option>
+                           <option value="credit">Credit Card</option>
+                           <option value="savings">Savings / Deposits</option>
+                           <option value="pension">Pension Fund</option>
+                           <option value="investment">Investment Portfolio</option>
+                           <option value="loan">Personal Loan</option>
+                           <option value="mortgage">Mortgage</option>
+                           <option value="cash">Cash</option>
+                       </select>
+                   </div>
+
+                   <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sub-Type / Class</label>
+                       <select value={accSubType} onChange={e=>setAccSubType(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-4 focus:ring-brand-500/10 outline-none">
+                           <option value="">Generic</option>
+                           {availableSubTypes.map(s => <option key={s} value={s}>{s}</option>)}
+                           <option value="Other">+ New Type...</option>
+                       </select>
+                       {accSubType === 'Other' && (
+                           <input type="text" placeholder="Custom Sub-type" value={newCustomSubType} onChange={e=>setNewCustomSubType(e.target.value)} className="mt-2 w-full p-2 border rounded-lg text-xs font-bold outline-none"/>
+                       )}
+                   </div>
+
+                   <div>
+                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Initial / Current Balance</label>
+                       <input type="number" value={accInitialBalance} onChange={e=>setAccInitialBalance(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-black focus:ring-4 focus:ring-brand-500/10 outline-none"/>
+                   </div>
+
                    {accType === 'credit' && (
                      <>
-                       <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Credit Limit</label><input type="number" value={accCreditLimit} onChange={e=>setAccCreditLimit(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none"/></div>
-                       <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Payment Day</label><input type="number" min="1" max="31" value={accPaymentDay} onChange={e=>setAccPaymentDay(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none"/></div>
-                       <div><label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Pay From</label><select value={accPayFromId} onChange={e=>setAccPayFromId(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-brand-500 outline-none"><option value="">Manual Pay</option>{accounts.filter(a=>a.type==='checking' && a.id !== isEditingAccount).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Credit Limit</label><input type="number" value={accCreditLimit} onChange={e=>setAccCreditLimit(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/></div>
+                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Payment Day</label><input type="number" min="1" max="31" value={accPaymentDay} onChange={e=>setAccPaymentDay(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/></div>
+                       <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pay From</label><select value={accPayFromId} onChange={e=>setAccPayFromId(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white outline-none"><option value="">Manual Pay</option>{accounts.filter(a=>a.type==='checking' && a.id !== isEditingAccount).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                     </>
+                   )}
+
+                   {IS_ASSET_CLASS(accType) && (
+                     <>
+                        <div className="md:col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Investment Track</label>
+                            <input type="text" value={accInvestmentTrack} onChange={e=>setAccInvestmentTrack(e.target.value)} placeholder="e.g. S&P 500, Bond Mix" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                        </div>
+                        {(accType === 'savings' || accType === 'loan' || accType === 'mortgage') && (
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Annual Interest (%)</label>
+                                <input type="number" step="0.01" value={accInterestRate} onChange={e=>setAccInterestRate(e.target.value)} placeholder="0.00%" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                            </div>
+                        )}
+                        {accType === 'pension' && (
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Est. Monthly Pension</label>
+                                <input type="number" value={accEstimatedPension} onChange={e=>setAccEstimatedPension(e.target.value)} placeholder="₪ 0.00" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                            </div>
+                        )}
+                        {(accType === 'loan' || accType === 'mortgage') && (
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Remaining Term (Months)</label>
+                                <input type="number" value={accTermMonths} onChange={e=>setAccTermMonths(e.target.value)} placeholder="e.g. 120" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
+                            </div>
+                        )}
                      </>
                    )}
                </div>
-               <div className="mt-8 flex gap-3">
-                   <button onClick={handleSaveAccount} disabled={isSaving} className="px-8 py-3 bg-brand-600 text-white rounded-xl text-sm font-black transition-all flex items-center gap-2 shadow-lg shadow-brand-500/20 active:scale-95 disabled:opacity-50">{isSaving && <Loader size={16} className="animate-spin" />}{isEditingAccount ? 'Update Account' : 'Create Account'}</button>
-                   {isEditingAccount && <button onClick={resetAccountForm} className="px-8 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-black transition-all hover:bg-gray-200">Cancel</button>}
+               <div className="mt-10 flex gap-4 pt-8 border-t border-slate-50">
+                   <button onClick={handleSaveAccount} disabled={isSaving} className="px-10 py-4 bg-brand-600 text-white rounded-2xl text-sm font-black transition-all flex items-center gap-2 shadow-xl shadow-brand-500/20 active:scale-95 disabled:opacity-50">
+                       {isSaving ? <Loader size={20} className="animate-spin" /> : <Save size={20}/>}
+                       {isEditingAccount ? 'Update Account Details' : 'Initialize New Account'}
+                   </button>
+                   {isEditingAccount && <button onClick={resetAccountForm} className="px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl text-sm font-black transition-all hover:bg-slate-200">Cancel</button>}
                </div>
            </div>
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                {sortedAccounts.map(acc => (
-                   <div key={acc.id} className="bg-white p-5 rounded-2xl border shadow-sm flex justify-between items-center group hover:border-brand-300 transition-all">
-                       <div className="flex items-center gap-4">
-                           <div className="w-2 h-10 rounded-full" style={{ backgroundColor: acc.color }} />
-                           <div>
-                               <div className="font-black text-slate-800 flex items-center gap-2">{acc.name}{acc.owner && <span className="text-[9px] px-2 py-0.5 bg-slate-100 rounded-lg text-slate-500 uppercase font-black">{acc.owner}</span>}</div>
-                               <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{acc.type}</div>
+                   <div key={acc.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
+                       <div className="flex justify-between items-start mb-6">
+                           <div className="flex items-center gap-4">
+                               <div className="w-3 h-12 rounded-full shadow-inner" style={{ backgroundColor: acc.color }} />
+                               <div>
+                                   <div className="font-black text-slate-800 flex items-center gap-2">
+                                       {acc.name}
+                                       {acc.owner && <span className="text-[9px] px-2 py-0.5 bg-slate-100 rounded-lg text-slate-500 uppercase font-black">{acc.owner}</span>}
+                                   </div>
+                                   <div className="flex items-center gap-2 mt-1">
+                                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{acc.type}</span>
+                                       {acc.subType && <span className="text-[10px] text-brand-500 font-black uppercase tracking-tighter">/ {acc.subType}</span>}
+                                   </div>
+                               </div>
+                           </div>
+                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={()=>handleEditAccount(acc)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"><Edit2 size={18}/></button>
+                             <button onClick={()=>handleDeleteAccount(acc.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18}/></button>
                            </div>
                        </div>
-                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={()=>handleEditAccount(acc)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg"><Edit2 size={18}/></button>
-                         <button onClick={()=>handleDeleteAccount(acc.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                       
+                       <div className="bg-slate-50 p-4 rounded-2xl flex justify-between items-end">
+                           <div>
+                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Initial Balance</p>
+                               <p className="text-sm font-black text-slate-900">{formatCurrency(acc.initialBalance, acc.currency)}</p>
+                           </div>
+                           {acc.interestRate && (
+                               <div className="text-right">
+                                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Rate</p>
+                                   <p className="text-xs font-black text-brand-600">{acc.interestRate}%</p>
+                               </div>
+                           )}
                        </div>
                    </div>
                ))}
@@ -508,31 +604,30 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
         </div>
       )}
-      
-      {/* Categories Tab ... (unchanged) */}
+
       {activeTab === 'categories' && (
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="font-bold text-lg mb-4">Manage Categories</h3>
-            <div className="flex gap-2">
-              <input type="text" placeholder="New category name..." value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} className="flex-1 p-2 border rounded text-sm outline-none focus:ring-2 focus:ring-brand-500" />
-              <button onClick={handleAddCategory} className="px-4 py-2 bg-brand-600 text-white rounded text-sm font-medium flex items-center gap-2"><Plus size={16} /> Add</button>
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-black text-xl mb-6 flex items-center gap-3"><Tag className="text-brand-500"/>Manage Global Categories</h3>
+            <div className="flex gap-3">
+              <input type="text" placeholder="Enter new category name..." value={newCategory} onChange={e => setNewCategory(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} className="flex-1 p-3 border rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10 transition-all" />
+              <button onClick={handleAddCategory} className="px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-black flex items-center gap-2 shadow-lg active:scale-95 transition-all"><Plus size={18} /> Add Category</button>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {categories.map(cat => (
-              <div key={cat} className="bg-white p-3 rounded-xl border border-gray-200 flex flex-col justify-between group hover:border-brand-300 transition-all">
+              <div key={cat} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-brand-300 transition-all">
                 {editingCategory === cat ? (
-                  <div className="space-y-2">
-                    <input type="text" autoFocus value={editedCategoryName} onChange={e => setEditedCategoryName(e.target.value)} className="w-full p-1 border rounded text-xs" />
-                    <div className="flex gap-1"><button onClick={handleSaveRename} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14}/></button><button onClick={() => setEditingCategory(null)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={14}/></button></div>
+                  <div className="space-y-3">
+                    <input type="text" autoFocus value={editedCategoryName} onChange={e => setEditedCategoryName(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold outline-none" />
+                    <div className="flex gap-2"><button onClick={handleSaveRename} className="flex-1 py-1.5 bg-green-50 text-green-600 rounded-lg"><Check size={14}/></button><button onClick={() => setEditingCategory(null)} className="flex-1 py-1.5 bg-red-50 text-red-600 rounded-lg"><X size={14}/></button></div>
                   </div>
                 ) : (
                   <>
-                    <span className="text-sm font-bold text-gray-700 truncate">{cat}</span>
-                    <div className="flex justify-end gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setEditingCategory(cat); setEditedCategoryName(cat); }} className="p-1 text-gray-400 hover:text-blue-600"><Edit2 size={14}/></button>
-                      <button onClick={() => confirm(`Delete category "${cat}"?`) && onUpdateCategories(categories.filter(c => c !== cat))} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14}/></button>
+                    <span className="text-sm font-black text-gray-700 truncate">{cat}</span>
+                    <div className="flex justify-end gap-1 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => { setEditingCategory(cat); setEditedCategoryName(cat); }} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"><Edit2 size={14}/></button>
+                      <button onClick={() => confirm(`Delete category "${cat}"?`) && onUpdateCategories(categories.filter(c => c !== cat))} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
                     </div>
                   </>
                 )}
@@ -543,50 +638,59 @@ export const Settings: React.FC<SettingsProps> = ({
       )}
 
       {activeTab === 'data' && (
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm text-center space-y-8">
-            <h3 className="text-xl font-black text-slate-800">Cloud Data Management</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-                <button onClick={handleExportData} className="p-8 border rounded-[2rem] hover:bg-slate-50 transition-all text-left flex items-center gap-6 group">
-                    <div className="p-4 bg-brand-50 text-brand-600 rounded-2xl group-hover:scale-110 transition-transform"><Download size={32}/></div>
-                    <div><div className="font-black text-lg">Export Cloud Data</div><div className="text-sm text-gray-500 font-medium">Download full JSON backup</div></div>
+        <div className="bg-white p-10 rounded-[2.5rem] border border-gray-100 shadow-sm text-center space-y-10">
+            <h3 className="text-2xl font-black text-slate-800">Cloud Backup & Synchronization</h3>
+            <div className="grid md:grid-cols-2 gap-8">
+                <button onClick={handleExportData} className="p-10 border rounded-[2.5rem] hover:bg-slate-50 transition-all text-left flex items-center gap-8 group shadow-sm hover:shadow-md">
+                    <div className="p-5 bg-brand-50 text-brand-600 rounded-3xl group-hover:scale-110 transition-transform"><Download size={40}/></div>
+                    <div><div className="font-black text-xl text-slate-800">Export Full Backup</div><div className="text-sm text-gray-500 font-medium">Download local JSON snapshot</div></div>
                 </button>
-                <button onClick={() => { setRestoreStage('upload'); setShowRestoreModal(true); }} className="p-8 border rounded-[2rem] hover:bg-slate-50 transition-all text-left flex items-center gap-6 group">
-                    <div className="p-4 bg-green-50 text-green-600 rounded-2xl group-hover:scale-110 transition-transform"><Upload size={32}/></div>
-                    <div><div className="font-black text-lg">Import Backup File</div><div className="text-sm text-gray-500 font-medium">Upload JSON and overwrite cloud</div></div>
+                <button onClick={() => { setRestoreStage('upload'); setShowRestoreModal(true); }} className="p-10 border rounded-[2.5rem] hover:bg-slate-50 transition-all text-left flex items-center gap-8 group shadow-sm hover:shadow-md">
+                    <div className="p-5 bg-green-50 text-green-600 rounded-3xl group-hover:scale-110 transition-transform"><Upload size={40}/></div>
+                    <div><div className="font-black text-xl text-slate-800">Restore from File</div><div className="text-sm text-gray-500 font-medium">Upload JSON and overwrite cloud</div></div>
                 </button>
+            </div>
+            <div className="bg-slate-900 p-8 rounded-[2rem] text-white flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-5">
+                    <div className="p-4 bg-white/10 rounded-2xl"><UserMinus size={32} className="text-red-400"/></div>
+                    <div className="text-left">
+                        <h4 className="font-black text-lg">Wipe Personal Data</h4>
+                        <p className="text-xs text-slate-400 font-medium">Irreversibly delete all records from your cloud account.</p>
+                    </div>
+                </div>
+                <button onClick={() => confirm("WARNING: This will permanently delete ALL data from Supabase. Continue?") && clearAllUserData().then(() => window.location.reload())} className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black transition-all active:scale-95 shadow-lg shadow-red-500/20">Purge Cloud Store</button>
             </div>
         </div>
       )}
 
-      {/* Restore Modal ... (unchanged) */}
       {showRestoreModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[120] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xl overflow-hidden animate-fade-in">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-fade-in border border-slate-100">
             <div className="p-8 border-b flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Database className="text-brand-500"/> Restore Backup</h3>
-              <button onClick={() => setShowRestoreModal(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Database className="text-brand-500"/> Restore Cloud Backup</h3>
+              <button onClick={() => setShowRestoreModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={24}/></button>
             </div>
             <div className="p-8">
               {restoreStage === 'upload' ? (
                 <div className="text-center space-y-6 py-8">
-                  <div onClick={() => fileInputRef.current?.click()} className="border-4 border-dashed border-slate-100 rounded-[2rem] p-12 hover:border-brand-200 hover:bg-brand-50 transition-all cursor-pointer group">
-                    <Upload size={48} className="mx-auto text-slate-200 group-hover:text-brand-400 mb-4" />
-                    <p className="font-black text-slate-400 group-hover:text-brand-600 uppercase tracking-widest">Select Backup JSON File</p>
+                  <div onClick={() => fileInputRef.current?.click()} className="border-4 border-dashed border-slate-100 rounded-[2.5rem] p-16 hover:border-brand-200 hover:bg-brand-50 transition-all cursor-pointer group">
+                    <FileJson size={64} className="mx-auto text-slate-200 group-hover:text-brand-400 mb-6" />
+                    <p className="font-black text-slate-400 group-hover:text-brand-600 uppercase tracking-widest text-sm">Drop backup JSON or Click to Select</p>
                     <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
                   </div>
                 </div>
               ) : (
                 <div className="space-y-8">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase">Accounts</p><p className="text-2xl font-black">{restorePayload?.accounts?.length || 0}</p></div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase">Transactions</p><p className="text-2xl font-black">{restorePayload?.transactions?.length || 0}</p></div>
+                    <div className="p-6 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Accounts</p><p className="text-3xl font-black text-slate-800">{restorePayload?.accounts?.length || 0}</p></div>
+                    <div className="p-6 bg-slate-50 rounded-2xl border"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Transactions</p><p className="text-3xl font-black text-slate-800">{restorePayload?.transactions?.length || 0}</p></div>
                   </div>
                   <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex gap-4">
-                    <AlertTriangle className="text-orange-600 shrink-0" /><p className="text-orange-800 text-xs font-medium">Clicking restore will delete all current cloud data and replace it with this backup.</p>
+                    <AlertTriangle className="text-orange-600 shrink-0" size={24}/><p className="text-orange-800 text-xs font-bold leading-relaxed">Proceeding will irreversibly replace your current cloud data with the contents of this backup file. We recommend exporting a current backup first.</p>
                   </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => setRestoreStage('upload')} className="flex-1 px-6 py-4 bg-slate-100 rounded-2xl font-black text-slate-600">Back</button>
-                    <button onClick={performRestore} disabled={isSaving} className="flex-[2] px-6 py-4 bg-brand-600 text-white rounded-2xl font-black">{isSaving ? 'Restoring...' : 'Confirm Restore'}</button>
+                  <div className="flex gap-4">
+                    <button onClick={() => setRestoreStage('upload')} className="flex-1 px-6 py-4 bg-slate-100 rounded-2xl font-black text-slate-600 hover:bg-slate-200 transition-all">Back</button>
+                    <button onClick={performRestore} disabled={isSaving} className="flex-[2] px-6 py-4 bg-brand-600 text-white rounded-2xl font-black shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">{isSaving && <Loader size={20} className="animate-spin" />} {isSaving ? 'Restoring Cloud...' : 'Confirm Overwrite'}</button>
                   </div>
                 </div>
               )}

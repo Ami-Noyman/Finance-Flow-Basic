@@ -55,7 +55,6 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
         const result = await query;
         if (result.error) {
             const error = result.error;
-            // Handle missing table (42P01) or PostgREST schema errors (PGRST204/205)
             const isSchemaError = ['42P01', 'PGRST204', 'PGRST205'].includes(error.code);
             if (isSchemaError) {
                 console.warn(`SafeFetch: Skipping ${tableName} due to schema mismatch (${error.code})`);
@@ -120,7 +119,6 @@ const accountToDb = (a: Account, userId: string) => {
         initial_balance: a.initialBalance,
     };
     
-    // Only add optional fields if they are actually present to avoid PGRST204 on older schemas
     if (a.owner !== undefined) payload.owner = a.owner;
     if (a.subType !== undefined) payload.sub_type = a.subType;
     if (a.creditLimit !== undefined) payload.credit_limit = a.creditLimit;
