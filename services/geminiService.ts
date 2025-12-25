@@ -2,7 +2,14 @@
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
 
-const getFreshAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getFreshAi = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey === "undefined") {
+    console.error("FinanceFlow Gemini API Error: API_KEY is missing. Check your Vercel Environment Variables and ensure you have redeployed after adding it.");
+    throw new Error("API_KEY_MISSING");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const categorizeTransaction = async (payee: string, amount: number, existingCategories: string[] = []): Promise<string> => {
   try {
@@ -20,7 +27,11 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
       Output: Only return the Hebrew category name, nothing else.`,
     });
     return response.text?.trim() || "כללי";
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message === "API_KEY_MISSING") {
+        return "כללי (Missing API Key)";
+    }
+    console.error("Categorization failed:", error);
     return "כללי"; 
   }
 };
@@ -29,13 +40,13 @@ export const generateFinancialInsight = async (
   transactions: Transaction[],
   forecast: ForecastPoint[]
 ): Promise<string> => {
-  const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
-  const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
-
-  const prompt = `Analyze this financial data and provide 2-3 tailored insights or tips in Hebrew.\nRecent Transactions:\n${recentTxsSummary}\nFuture Projection Snapshots:\n${forecastSummary}`;
-
   try {
     const ai = getFreshAi();
+    const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
+    const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
+
+    const prompt = `Analyze this financial data and provide 2-3 tailored insights or tips in Hebrew.\nRecent Transactions:\n${recentTxsSummary}\nFuture Projection Snapshots:\n${forecastSummary}`;
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -44,15 +55,18 @@ export const generateFinancialInsight = async (
       }
     });
     return response.text || "שגיאה בייצור תובנות.";
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message === "API_KEY_MISSING") {
+        return "שגיאה: מפתח ה-API חסר בהגדרות השרת. אנא בדוק את הגדרות ה-Environment Variables ב-Vercel.";
+    }
     return "שגיאה בייצור תובנות.";
   }
 };
 
 export const analyzeAnomalies = async (transactions: Transaction[]): Promise<string[]> => {
   try {
-    const recent = transactions.slice(0, 100).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const ai = getFreshAi();
+    const recent = transactions.slice(0, 100).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Find 2-3 financial anomalies in these transactions (price increases, unusually high spend compared to category average). 
@@ -67,7 +81,8 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
       }
     });
     return JSON.parse(response.text || "[]");
-  } catch (e) {
+  } catch (e: any) {
+    console.error("Anomaly analysis failed:", e);
     return [];
   }
 };
