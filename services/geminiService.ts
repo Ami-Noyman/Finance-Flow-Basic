@@ -1,11 +1,9 @@
 
-
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../types';
 
 /**
  * Interface for AI Studio external key management.
- * Moved into declare global to resolve type mismatch and modifier conflicts.
  */
 declare global {
   interface AIStudio {
@@ -14,19 +12,18 @@ declare global {
   }
 
   interface Window {
-    // Fix: Added readonly to match the environment's global declaration and resolve modifier conflict.
-    readonly aistudio: AIStudio;
+    // FIX: Removed readonly to ensure compatibility with existing global definitions in the environment
+    aistudio: AIStudio;
   }
 }
 
 /**
  * Robust helper to get the API key.
- * Prioritizes process.env.API_KEY (injected at build time), 
- * but provides fallback info for the UI.
+ * Prioritizes process.env.API_KEY (injected at build time by Vite define).
  */
 export const getApiKey = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+  if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey.length < 5) {
     return null;
   }
   return apiKey;
@@ -34,17 +31,24 @@ export const getApiKey = () => {
 
 /**
  * Creates a fresh instance of the Gemini API client.
+ * Strictly follows the guideline to use the direct process.env variable name.
  */
 const getFreshAi = () => {
-  const apiKey = getApiKey();
-  
-  if (!apiKey) {
-    const errorMsg = "Gemini API_KEY is missing. AI features require an API key.";
-    console.error(errorMsg);
-    throw new Error("API_KEY_MISSING");
+  const key = getApiKey();
+  if (!key) {
+    throw new Error("Gemini API key is missing or invalid. Check Vercel environment variables.");
   }
-  
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
+
+/**
+ * Clean model output that might contain Markdown wrappers.
+ */
+const cleanJsonResponse = (text: string): string => {
+  return text
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
+    .trim();
 };
 
 /**
@@ -68,7 +72,7 @@ export const categorizeTransaction = async (payee: string, amount: number, exist
     
     return response.text?.trim() || "כללי";
   } catch (error: any) {
-    console.error("Categorization failed:", error);
+    console.error("AI Transaction Categorization failed:", error);
     return "כללי"; 
   }
 };
@@ -91,14 +95,14 @@ export const generateFinancialInsight = async (
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "אתה יועץ פיננסי מקצועי. השב בעברית תוך שימוש בפורמט Markdown נקי.",
+        systemInstruction: "אתה יועץ פיננסי מקצועי המומחה בניהול תקציב ותזרים מזומנים. השב בעברית בלבד תוך שימוש בפורמט Markdown נקי וקריא.",
       }
     });
     
     return response.text || "לא ניתן היה לייצר תובנות כרגע.";
   } catch (error: any) {
-    console.error("Insight generation failed:", error);
-    return "שגיאה בייצור תובנות AI.";
+    console.error("AI Insight Generation failed:", error);
+    return "שגיאה בייצור תובנות AI. בדוק את חיבור ה-API בקונסול.";
   }
 };
 
@@ -123,9 +127,10 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
       }
     });
     
-    return JSON.parse(response.text || "[]");
+    const cleanedText = cleanJsonResponse(response.text || "[]");
+    return JSON.parse(cleanedText);
   } catch (e: any) {
-    console.error("Anomaly analysis failed:", e);
+    console.error("AI Anomaly Analysis failed:", e);
     return [];
   }
 };
@@ -147,6 +152,11 @@ export const createFinancialChatSession = (
 
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
-    config: { systemInstruction }
+    config: { 
+      systemInstruction,
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95
+    }
   });
 };

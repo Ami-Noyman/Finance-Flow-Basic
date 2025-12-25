@@ -89,7 +89,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
 
   const checkingAccountIds = useMemo(() => accounts.filter(a => a.type === 'checking').map(a => a.id), [accounts]);
 
-  // Fix: Cleaned up initialBalances useMemo, removed duplicated logic that was causing double-counting and confusion.
   const initialBalances = useMemo(() => {
     const today = startOfDay(new Date());
     let net = accounts.filter(a => targetAccountIds.includes(a.id)).reduce((acc, a) => acc + a.initialBalance, 0);
@@ -166,7 +165,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     return { totalLeft, roadmap: roadmap.filter(p => p.total > 0), activePayees: installmentPayees };
   }, [recurring, installmentPayees]);
 
-  // Fix: In forecastData useMemo, renamed 'check' to 'runningChecking' to avoid scoping errors and ensure consistency.
   const forecastData = useMemo(() => {
     const points: any[] = [];
     const today = startOfDay(new Date());
@@ -204,7 +202,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
               if (t.type === TransactionType.INCOME) runningChecking += t.amount;
               else runningChecking -= t.amount;
           }
-          // Fix: replaced 'check' with 'runningChecking'
           if (t.toAccountId && checkingAccountIds.includes(t.toAccountId)) runningChecking += t.amount;
       });
 
@@ -214,7 +211,6 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
            if (targetAccountIds.includes(r.accountId)) { if (r.type === TransactionType.INCOME) runningBalance += amount; else runningBalance -= amount; }
            if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) runningBalance += amount;
            if (checkingAccountIds.includes(r.accountId)) { if (r.type === TransactionType.INCOME) runningChecking += amount; else runningChecking -= amount; }
-           // Fix: ensure correct checking balance update for transfers/recurring
            if (r.toAccountId && checkingAccountIds.includes(r.toAccountId)) runningChecking += amount;
            r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
         }
@@ -305,14 +301,21 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     if (onUpdateChatMessages) onUpdateChatMessages(newMessages);
     setIsChatLoading(true);
     try {
+      // Re-initialize session if it doesn't exist or key might have updated
       if (!chatSessionRef?.current) {
           if (chatSessionRef) chatSessionRef.current = createFinancialChatSession(transactions, recurring, accounts);
       }
-      const result = await chatSessionRef?.current?.sendMessage({ message: userMsg });
-      const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result?.text || 'No response.' }];
+      
+      const session = chatSessionRef?.current;
+      if (!session) throw new Error("Could not create AI session. Key might be missing.");
+
+      const result = await session.sendMessage({ message: userMsg });
+      const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result.text || 'לא התקבלה תגובה מהיועץ.' }];
       if (onUpdateChatMessages) onUpdateChatMessages(finalMessages);
-    } catch (e) {
-      if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: 'Error interacting with AI.' }]);
+    } catch (e: any) {
+      console.error("AI Advisor Messaging Error:", e);
+      const errorMsg = e.message?.includes("API_KEY") ? "שגיאת מפתח API. וודא שהגדרת את המפתח בשרת." : "שגיאה בתקשורת עם הבינה המלאכותית.";
+      if (onUpdateChatMessages) onUpdateChatMessages([...newMessages, { role: 'model', text: errorMsg }]);
     } finally {
       setIsChatLoading(false);
     }
@@ -369,8 +372,19 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                 </div>
                             </div>
                         ))}
+                        {isChatLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-white p-4 rounded-2xl shadow-sm">
+                                    <div className="flex gap-1">
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce delay-150"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    <form onSubmit={handleSendMessage} className="p-6 bg-white border-t flex gap-3"><input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask a financial question..." className="flex-1 p-4 bg-slate-50 border rounded-2xl text-right" dir="rtl" /><button type="submit" disabled={isChatLoading} className="bg-orange-600 text-white p-4 rounded-2xl shadow-lg"><Send size={20}/></button></form>
+                    <form onSubmit={handleSendMessage} className="p-6 bg-white border-t flex gap-3"><input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask a financial question..." className="flex-1 p-4 bg-slate-50 border rounded-2xl text-right" dir="rtl" /><button type="submit" disabled={isChatLoading} className="bg-orange-600 text-white p-4 rounded-2xl shadow-lg hover:bg-orange-700 transition-colors disabled:opacity-50"><Send size={20}/></button></form>
                 </div>
             )}
         </div>
