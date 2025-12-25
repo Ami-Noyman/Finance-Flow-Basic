@@ -4,10 +4,16 @@ import { Transaction, RecurringTransaction, ForecastPoint, Account } from '../ty
 
 const getFreshAi = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "undefined") {
-    console.error("FinanceFlow Gemini API Error: API_KEY is missing. Check your Vercel Environment Variables and ensure you have redeployed after adding it.");
+  
+  // Robust check for missing keys in production builds
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    const errorMsg = "FinanceFlow Error: Gemini API_KEY is missing. " +
+                   "1. Ensure you added 'API_KEY' in Vercel Settings -> Environment Variables. " +
+                   "2. Ensure you have REDEPLOYED the project after adding the variable.";
+    console.error(errorMsg);
     throw new Error("API_KEY_MISSING");
   }
+  
   return new GoogleGenAI({ apiKey });
 };
 
@@ -57,7 +63,7 @@ export const generateFinancialInsight = async (
     return response.text || "שגיאה בייצור תובנות.";
   } catch (error: any) {
     if (error.message === "API_KEY_MISSING") {
-        return "שגיאה: מפתח ה-API חסר בהגדרות השרת. אנא בדוק את הגדרות ה-Environment Variables ב-Vercel.";
+        return "שגיאה: מפתח ה-API חסר בהגדרות השרת. אנא בדוק את הגדרות ה-Environment Variables ב-Vercel ופרוס מחדש.";
     }
     return "שגיאה בייצור תובנות.";
   }
