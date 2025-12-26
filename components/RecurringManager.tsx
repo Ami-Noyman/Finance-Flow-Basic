@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { RecurringTransaction, TransactionType, Frequency, Account, AmountType, Transaction, SmartCategoryBudget, TransactionRule } from '../types';
-import { Plus, Trash2, Calendar, Repeat, Edit2, Info, Clock, AlertCircle, X, CheckCircle, BrainCircuit, Target, StickyNote, PieChart as PieIcon, BarChart3, TrendingUp, ArrowRightLeft, Play, Filter, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Calendar, Repeat, Edit2, Info, Clock, AlertCircle, X, CheckCircle, BrainCircuit, Target, StickyNote, PieChart as PieIcon, BarChart3, TrendingUp, ArrowRightLeft, Play, Filter, RotateCcw, AlertTriangle, ArrowRight, Save, RefreshCw } from 'lucide-react';
 import { categorizeTransaction } from '../services/geminiService';
 import { formatCurrency } from '../utils/currency';
 import { parseISO, isBefore, startOfDay, isValid, format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -12,7 +12,6 @@ interface RecurringManagerProps {
   categoryBudgets: SmartCategoryBudget[];
   accounts: Account[];
   categories: string[];
-  // Fixed: Added rules to props to enable layer 1 categorization
   rules: TransactionRule[];
   transactions?: Transaction[];
   onAddRecurring: (r: RecurringTransaction) => void;
@@ -30,7 +29,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   categoryBudgets,
   accounts,
   categories,
-  // Fixed: Destructured rules prop
   rules,
   transactions = [],
   onAddRecurring,
@@ -73,12 +71,76 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const [totalOccurrences, setTotalOccurrences] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Type-ahead states
+  const [payeeSuggestions, setPayeeSuggestions] = useState<string[]>([]);
+  const [showPayeeSuggestions, setShowPayeeSuggestions] = useState(false);
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([]);
+  const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
+
   // Budget Form
   const [budgetCategory, setBudgetCategory] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [budgetUseAvg, setBudgetUseAvg] = useState(false);
 
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
+
+  const payeeRef = useRef<HTMLDivElement>(null);
+  const categoryInputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (payeeRef.current && !payeeRef.current.contains(event.target as Node)) {
+        setShowPayeeSuggestions(false);
+      }
+      if (categoryInputRef.current && !categoryInputRef.current.contains(event.target as Node)) {
+        setShowCategorySuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handlePayeeInputChange = (value: string) => {
+    setPayee(value);
+    if (value.length > 0) {
+      const distinct = Array.from(new Set([
+        ...transactions.map(t => (t.payee || (t as any).description || '') as string),
+        ...recurring.map(r => (r.payee || '') as string)
+      ])).filter(p => !!p);
+      const filtered = distinct.filter(p => p.toLowerCase().includes(value.toLowerCase())).slice(0, 5);
+      setPayeeSuggestions(filtered);
+      setShowPayeeSuggestions(true);
+    } else {
+      setShowPayeeSuggestions(false);
+    }
+  };
+
+  const handleSelectPayeeSuggestion = (selected: string) => {
+    setPayee(selected);
+    setShowPayeeSuggestions(false);
+    // Find last used category
+    const past = transactions.find(t => (t.payee || (t as any).description) === selected) || recurring.find(r => r.payee === selected);
+    if (past && past.category) {
+      if (categories.includes(past.category)) {
+        setCategory(past.category);
+        setCustomCategory('');
+      } else if (past.category !== 'Transfer') {
+        setCategory('Other');
+        setCustomCategory(past.category);
+      }
+    }
+  };
+
+  const handleCategoryInputChange = (value: string) => {
+    setCustomCategory(value);
+    if (value.length > 0) {
+      const filtered = categories.filter(c => c.toLowerCase().includes(value.toLowerCase())).slice(0, 5);
+      setCategorySuggestions(filtered);
+      setShowCategorySuggestions(true);
+    } else {
+      setShowCategorySuggestions(false);
+    }
+  };
 
   const getPayeeName = (r: any) => r.payee || r.description || '';
 
@@ -131,17 +193,20 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     if (type === TransactionType.TRANSFER) {
         finalCategory = 'Transfer';
     } else if (!finalCategory) {
-        // Fixed: Added missing history (transactions) and rules arguments to satisfy categorizeTransaction signature
         finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
     }
     
+    if (category === 'Other' && customCategory && !categories.includes(customCategory)) {
+        onAddCategory(customCategory);
+    }
+
     const recData: RecurringTransaction = {
       id: editingId || crypto.randomUUID(),
       amount: parseFloat(amount),
       amountType,
       payee,
       notes: notes.trim() || undefined,
-      category: finalCategory,
+      category: finalCategory || 'כללי',
       type,
       accountId,
       toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
@@ -161,11 +226,11 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
   const handleSubmitBudget = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!budgetCategory || !budgetLimit) return;
+    if (!budgetCategory || (!budgetLimit && !budgetUseAvg)) return;
     const b: SmartCategoryBudget = {
         id: editingBudgetId || crypto.randomUUID(),
         categoryName: budgetCategory,
-        monthlyLimit: parseFloat(budgetLimit),
+        monthlyLimit: parseFloat(budgetLimit) || 0,
         useAverage: budgetUseAvg,
         isActive: true
     };
@@ -174,7 +239,9 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   };
 
   const resetForm = () => {
-    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(sortedAccounts[0]?.id || ''); setTotalOccurrences(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month');
+    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(sortedAccounts[0]?.id || ''); setTotalOccurrences(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month');
+    setPayeeSuggestions([]); setShowPayeeSuggestions(false);
+    setCategorySuggestions([]); setShowCategorySuggestions(false);
   };
 
   const resetFilters = () => {
@@ -236,6 +303,8 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       return sum + (r.amount * multiplier);
     }, 0);
   }, [recurring]);
+
+  const tooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', padding: '16px', zIndex: 1000 };
 
   return (
     <div className="space-y-4 h-[calc(100vh-6rem)] flex flex-col animate-fade-in pb-2">
@@ -372,17 +441,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                             </td>
                         </tr>
                     ))}
-                    {filteredRecurring.length === 0 && (
-                        <tr>
-                            <td colSpan={7} className="p-20 text-center text-slate-400">
-                                <div className="flex flex-col items-center gap-3">
-                                    <Repeat size={40} className="opacity-10"/>
-                                    <p className="text-sm font-bold">No commitments match your filters.</p>
-                                    <button onClick={resetFilters} className="text-xs font-black text-brand-600 hover:underline uppercase tracking-widest">Clear filters</button>
-                                </div>
-                            </td>
-                        </tr>
-                    )}
                 </tbody>
             </table>
             </div>
@@ -414,7 +472,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                                 </div>
                                 <div className="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => handleOpenBudgetModal(b)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"><Edit2 size={16}/></button>
-                                    <button onClick={() => onDeleteCategoryBudget(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                                    <button onClick={() => confirm("Delete limit?") && onDeleteCategoryBudget(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16}/></button>
                                 </div>
                             </div>
 
@@ -439,12 +497,10 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                                         </div>
                                     </div>
                                     <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
-                                        {/* Actual Spent Bar */}
                                         <div 
                                             className="h-full absolute left-0 bg-brand-500 transition-all duration-700 z-20 rounded-full" 
                                             style={{ width: `${percentActual}%` }}
                                         />
-                                        {/* Total Estimated Bar (Including Upcoming) */}
                                         <div 
                                             className={`h-full absolute left-0 transition-all duration-700 z-10 rounded-full ${isOver ? 'bg-red-500' : 'bg-orange-300'}`} 
                                             style={{ width: `${percentTotal}%` }}
@@ -458,8 +514,8 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                                         {isOver ? `${formatCurrency(totalEstimatedSpend - effectiveLimit)} OVER` : `${formatCurrency(remainingBudget)} FREE`}
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Effective Limit</div>
-                                        <div className="text-xs font-black text-slate-600">{b.useAverage ? 'Auto-Average' : 'Manual Set'}</div>
+                                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Limit Engine</div>
+                                        <div className="text-xs font-black text-slate-600">{b.useAverage ? 'Auto-Average' : 'Manual Limit'}</div>
                                     </div>
                                 </div>
                             </div>
@@ -479,9 +535,9 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
         </div>
       )}
 
-      {/* Commit Modal */}
+      {/* Commitment Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-black text-gray-800">{editingId ? 'Edit Commitment' : 'New Commitment'}</h3><button onClick={() => setIsModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none">&times;</button></div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -494,7 +550,27 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                     <option value={TransactionType.TRANSFER}>Transfer (⇄)</option>
                   </select>
                 </div>
-                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Payee</label><input type="text" required value={payee} onChange={e => setPayee(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="e.g. Monthly Rent" /></div>
+                <div className="relative" ref={payeeRef}>
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Payee</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={payee} 
+                    onChange={e => handlePayeeInputChange(e.target.value)} 
+                    onFocus={() => payee.length > 0 && setShowPayeeSuggestions(true)}
+                    className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" 
+                    placeholder="e.g. Monthly Rent" 
+                  />
+                  {showPayeeSuggestions && payeeSuggestions.length > 0 && (
+                    <div className="absolute z-[110] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                      {payeeSuggestions.map((s, idx) => (
+                        <button key={idx} type="button" onClick={() => handleSelectPayeeSuggestion(s)} className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-brand-50 text-gray-700 transition-colors border-b last:border-b-0">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-5">
@@ -513,16 +589,36 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                     </select>
                   </div>
                 ) : (
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Category</label>
-                    <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
-                      <option value="">Auto-categorize</option>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                      <option value="Other">+ New Category...</option>
-                    </select>
-                    {category === 'Other' && (
-                        <input type="text" placeholder="Category Name" value={customCategory} onChange={e => setCustomCategory(e.target.value)} className="mt-2 w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none" />
-                    )}
+                    <div className="flex flex-col gap-2">
+                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
+                            <option value="">Auto-categorize</option>
+                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            <option value="Other">+ New Category...</option>
+                        </select>
+                        {category === 'Other' && (
+                            <div className="relative" ref={categoryInputRef}>
+                                <input 
+                                    type="text" 
+                                    placeholder="Type Category Name..." 
+                                    value={customCategory} 
+                                    onChange={e => handleCategoryInputChange(e.target.value)} 
+                                    onFocus={() => customCategory.length > 0 && setShowCategorySuggestions(true)}
+                                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold" 
+                                />
+                                {showCategorySuggestions && categorySuggestions.length > 0 && (
+                                    <div className="absolute z-[110] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                                        {categorySuggestions.map((s, idx) => (
+                                            <button key={idx} type="button" onClick={() => { setCategory(s); setCustomCategory(''); setShowCategorySuggestions(false); }} className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-brand-50 text-gray-700 transition-colors border-b last:border-b-0">
+                                                {s}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -530,7 +626,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
               <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-16 resize-none outline-none focus:ring-2 focus:ring-brand-500" placeholder="Optional details..." /></div>
 
               <div className="grid grid-cols-2 gap-5">
-                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" /></div>
+                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
                  <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Total Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="Blank for infinite" /></div>
               </div>
 
@@ -574,38 +670,67 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
         </div>
       )}
 
-      {/* Budget Modal */}
+      {/* Spend Limits (Budget) Modal */}
       {isBudgetModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
-                <div className="p-6 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-black text-gray-800">{editingBudgetId ? 'Edit Category Spend' : 'New Category Spend'}</h3><button onClick={() => setIsBudgetModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none">&times;</button></div>
-                <form onSubmit={handleSubmitBudget} className="p-6 space-y-6">
-                    <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Category</label>
-                        <select value={budgetCategory} onChange={e => setBudgetCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Monthly Limit</label>
-                        <input type="number" required value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="0.00" />
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-2 cursor-pointer" onClick={() => setBudgetUseAvg(!budgetUseAvg)}>
-                        <div className={`w-10 h-5 rounded-full transition-colors relative ${budgetUseAvg ? 'bg-brand-600' : 'bg-gray-200'}`}>
-                            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${budgetUseAvg ? 'left-5.5' : 'left-0.5'}`} />
-                        </div>
-                        <span className="text-sm font-black text-gray-600">Use 12-Month Average</span>
-                    </div>
-
-                    <div className="p-3 bg-blue-50 rounded-xl flex items-start gap-3">
-                        <p className="text-[10px] text-blue-700 leading-normal font-bold">If enabled, the budget will dynamically adjust based on your average spend over the last year. If disabled, the manual limit will be used.</p>
-                    </div>
-
-                    <button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2">Save Spend Limit</button>
-                </form>
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-black text-gray-800">{editingBudgetId ? 'Edit Spend Limit' : 'New Spend Limit'}</h3>
+              <button onClick={() => setIsBudgetModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none">&times;</button>
             </div>
+            <form onSubmit={handleSubmitBudget} className="p-8 space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Category</label>
+                <select value={budgetCategory} onChange={e => setBudgetCategory(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10">
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-4">
+                 <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Limit Strategy</label>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setBudgetUseAvg(false)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${!budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                        <Edit2 size={20}/>
+                        <span className="text-[10px] font-black uppercase">Manual Set</span>
+                    </button>
+                    <button type="button" onClick={() => setBudgetUseAvg(true)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                        <RefreshCw size={20}/>
+                        <span className="text-[10px] font-black uppercase">Auto-Average</span>
+                    </button>
+                 </div>
+              </div>
+
+              {!budgetUseAvg && (
+                <div className="animate-fade-in">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Monthly Spending Limit</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    required 
+                    value={budgetLimit} 
+                    onChange={e => setBudgetLimit(e.target.value)} 
+                    placeholder="0.00" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-black outline-none focus:ring-4 focus:ring-brand-500/10" 
+                  />
+                </div>
+              )}
+
+              {budgetUseAvg && (
+                <div className="p-4 bg-blue-50 rounded-2xl flex items-start gap-3 border border-blue-100 animate-fade-in">
+                    <Info size={18} className="text-blue-600 shrink-0 mt-0.5"/>
+                    <p className="text-[10px] font-bold text-blue-800 leading-relaxed uppercase">
+                      Average Strategy Active: The limit will automatically calculate based on your spending history for this category over the last 12 months.
+                    </p>
+                </div>
+              )}
+
+              <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-2xl font-black shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 uppercase tracking-widest text-xs">
+                <Save size={18}/> {editingBudgetId ? 'Update Strategy' : 'Activate Limit'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

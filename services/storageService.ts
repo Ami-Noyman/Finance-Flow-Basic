@@ -150,7 +150,6 @@ const mapRule = (row: any): TransactionRule => ({
 const ruleToDb = (rule: TransactionRule, userId: string) => ({
     id: rule.id,
     user_id: userId,
-    // Fix: access property payeePattern instead of incorrect payee_pattern
     payee_pattern: rule.payeePattern,
     amount_condition: rule.amountCondition,
     amount_value: rule.amountValue || null,
@@ -451,7 +450,19 @@ export const batchCreateCategories = async (names: string[]) => {
 };
 
 export const fetchAccountSubTypes = async (uid?: string): Promise<string[]> => {
-    const defaults = ['קרן השתלמות', 'קופת גמל', 'קופת גמל להשקעה', 'קרנות כספיות', 'פוליסת חיסכון', 'תיק מנוהל', 'חשבון השקעות'];
+    const defaults = [
+        'קרן השתלמות', 
+        'קופת גמל', 
+        'קופת גמל להשקעה', 
+        'קרן פנסיה',
+        'ביטוח מנהלים',
+        'קרנות כספיות', 
+        'פוליסת חיסכון', 
+        'תיק מנוהל', 
+        'חשבון השקעות',
+        'נדל״ן להשקעה',
+        'קריפטו'
+    ];
     try {
         const { supabase, userId } = await getContext();
         const { data, error } = await supabase.from('account_sub_types').select('name').eq('user_id', uid || userId);
