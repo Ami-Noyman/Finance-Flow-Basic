@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, TransactionType, Account, TransactionRule } from '../types';
-// Fixed: Added RefreshCw to imports
 import { Plus, Trash2, Search, ArrowUpCircle, ArrowDownCircle, Edit2, ArrowRightLeft, ArrowRight, CheckSquare, Square, Filter, X, Calendar, DollarSign, Repeat, StickyNote, RotateCcw, Zap, RefreshCw } from 'lucide-react';
 import { categorizeTransaction } from '../services/geminiService';
 import { formatCurrency } from '../utils/currency';
@@ -58,8 +57,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [isReconciled, setIsReconciled] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
   
-  const [appliedRuleId, setAppliedRuleId] = useState<string | null>(null);
-
   const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,24 +65,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     
     let finalCategory = category === 'Other' ? customCategory : category;
     
-    // If no category selected, use the Smart Learning Engine
     if (type !== TransactionType.TRANSFER && !finalCategory) {
       setIsAutoCategorizing(true);
-      finalCategory = await categorizeTransaction(
-        payee, 
-        parseFloat(amount), 
-        transactions, 
-        rules, 
-        categories
-      );
+      finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
       setIsAutoCategorizing(false);
     } else if (type === TransactionType.TRANSFER) {
         finalCategory = 'Transfer';
     }
 
-    if (category === 'Other' && customCategory) {
-        onAddCategory(customCategory);
-    }
+    if (category === 'Other' && customCategory) onAddCategory(customCategory);
 
     const txData: Transaction = {
       id: editingId || crypto.randomUUID(),
@@ -108,7 +96,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   const resetForm = () => {
-    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setDate(format(new Date(), 'yyyy-MM-dd')); setToAccountId(''); setIsReconciled(false); setMakeRecurring(false); setAppliedRuleId(null);
+    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setDate(format(new Date(), 'yyyy-MM-dd')); setToAccountId(''); setIsReconciled(false); setMakeRecurring(false);
     if (!formAccountId && sortedAccounts.length > 0) setFormAccountId(sortedAccounts[0].id);
   };
 
@@ -136,13 +124,71 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden h-[calc(100vh-6rem)] flex flex-col">
       <div className="p-6 border-b border-gray-100 bg-white shrink-0">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div><h2 className="text-xl font-bold text-gray-800 tracking-tight">Transactions</h2><p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-0.5">{selectedAccountId ? `Account: ${getAccountName(selectedAccountId)}` : 'Consolidated View'} <span className="mx-2 text-gray-200">|</span> {filteredTransactions.length} records found</p></div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 tracking-tight">Transactions</h2>
+              <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-0.5">
+                {selectedAccountId ? `Account: ${getAccountName(selectedAccountId)}` : 'Consolidated View'} 
+                <span className="mx-2 text-gray-200">|</span> 
+                {filteredTransactions.length} records
+              </p>
+            </div>
             <div className="flex items-center gap-2 w-full md:w-auto">
-                <div className="relative flex-1 md:w-64"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search by payee..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all bg-gray-50"/></div>
-                <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-black uppercase tracking-wider transition-all shadow-sm ${showFilters ? 'bg-brand-600 border-brand-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}><Filter size={14} /><span className="hidden sm:inline">Filter</span></button>
-                <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg transition-all whitespace-nowrap shadow-md text-xs font-black uppercase tracking-wider active:scale-95"><Plus size={16} /><span className="hidden sm:inline">New Entry</span></button>
+                <div className="relative flex-1 md:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                  <input type="text" placeholder="Search payee..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all bg-gray-50"/>
+                </div>
+                <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-black uppercase tracking-wider transition-all shadow-sm ${showFilters ? 'bg-brand-600 border-brand-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  <Filter size={14} />
+                  <span className="hidden sm:inline">Filter</span>
+                </button>
+                <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg transition-all whitespace-nowrap shadow-md text-xs font-black uppercase tracking-wider active:scale-95">
+                  <Plus size={16} />
+                  <span className="hidden sm:inline">New Entry</span>
+                </button>
             </div>
         </div>
+
+        {/* RE-ADDED FILTER PANEL */}
+        {showFilters && (
+          <div className="mt-4 p-4 bg-gray-50 border border-gray-100 rounded-xl grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-fade-in shadow-inner">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Date From</label>
+              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-xs" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Date To</label>
+              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-xs" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
+              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white">
+                <option value="">All Categories</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            {!selectedAccountId && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account</label>
+                <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white">
+                  <option value="">All Accounts</option>
+                  {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Min Amount</label>
+              <input type="number" value={filterMinAmount} onChange={e => setFilterMinAmount(e.target.value)} placeholder="0.00" className="w-full p-2 border border-gray-200 rounded-lg text-xs" />
+            </div>
+            <div className="flex items-end">
+              <button 
+                onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterCategory(''); setFilterAccount(''); setFilterMinAmount(''); setFilterMaxAmount(''); }}
+                className="w-full py-2 px-3 text-gray-500 hover:text-red-600 text-[10px] font-black uppercase tracking-widest border border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2"
+              >
+                <RotateCcw size={12}/> Reset
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="overflow-y-auto flex-1 p-0">
@@ -157,7 +203,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     <td className="p-4 text-xs font-bold text-gray-900">{t.payee || (t as any).description}</td>
                     <td className="p-4 text-xs text-gray-500"><span className="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-black uppercase text-gray-500 border border-gray-200">{t.category}</span></td>
                     <td className={`p-4 text-sm font-black text-right ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(t.amount, getCurrency(t.accountId))}</td>
-                    <td className="p-4 text-center"><div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setEditingId(t.id)} className="p-1.5 text-gray-400 hover:text-brand-600"><Edit2 size={16} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button></div></td>
+                    <td className="p-4 text-center"><div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => { setEditingId(t.id); setAmount(t.amount.toString()); setPayee(t.payee); setType(t.type); setDate(t.date); setFormAccountId(t.accountId); setToAccountId(t.toAccountId || ''); setCategory(t.category); setIsReconciled(t.isReconciled || false); setIsModalOpen(true); }} className="p-1.5 text-gray-400 hover:text-brand-600"><Edit2 size={16} /></button><button onClick={() => onDeleteTransaction(t.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button></div></td>
                 </tr>
             ))}
           </tbody>
@@ -188,6 +234,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     </select>
                 </div>
               </div>
+
+              <div className="flex items-center gap-6 pt-2">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <div onClick={() => setIsReconciled(!isReconciled)} className={`w-10 h-5 rounded-full transition-all relative ${isReconciled ? 'bg-green-500' : 'bg-gray-200'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isReconciled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </div>
+                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Reconciled (R)</span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <div onClick={() => setMakeRecurring(!makeRecurring)} className={`w-10 h-5 rounded-full transition-all relative ${makeRecurring ? 'bg-brand-600' : 'bg-gray-200'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeRecurring ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </div>
+                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Set Recurring</span>
+                </label>
+              </div>
+
               <button type="submit" disabled={isAutoCategorizing} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-3.5 rounded-xl transition-all shadow-lg flex justify-center items-center gap-2 active:scale-95 uppercase tracking-widest text-xs">{isAutoCategorizing ? <RefreshCw size={16} className="animate-spin"/> : 'Persist Transaction'}</button>
             </form>
           </div>

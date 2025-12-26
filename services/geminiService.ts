@@ -49,7 +49,8 @@ export const categorizeTransaction = async (
   try {
     if (!hasValidApiKey()) return "כללי";
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+    // Fix: Initialize GoogleGenAI using process.env.API_KEY directly per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const categoriesList = existingCategories.length > 0 
       ? `בחר מהרשימה: [${existingCategories.join(', ')}]. אם אין התאמה, צור חדשה בעברית.` 
       : `קטלג למילה אחת בעברית.`;
@@ -69,7 +70,8 @@ export const categorizeTransaction = async (
 export const generateFinancialInsight = async (transactions: Transaction[], forecast: ForecastPoint[]): Promise<string> => {
   if (!hasValidApiKey()) throw new Error("API_KEY_MISSING");
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI using process.env.API_KEY directly per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const recentTxsSummary = transactions.slice(0, 15).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
   const forecastSummary = forecast.filter((_, i) => i % 20 === 0).map(f => `${f.date}: Balance ${Math.round(f.balance)}`).join('\n');
 
@@ -90,7 +92,8 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
   try {
     if (!hasValidApiKey()) return [];
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+    // Fix: Initialize GoogleGenAI using process.env.API_KEY directly per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const recent = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} - ${t.amount} (${t.category})`).join('\n');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -115,7 +118,8 @@ export const analyzeAnomalies = async (transactions: Transaction[]): Promise<str
 export const createFinancialChatSession = (transactions: Transaction[], recurring: RecurringTransaction[], accounts: Account[]): Chat => {
   if (!hasValidApiKey()) throw new Error("API_KEY_MISSING");
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI using process.env.API_KEY directly per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const accountSummary = accounts.map(a => `- ${a.name}: ${a.currency} ${a.initialBalance}`).join('\n');
   const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount}`).join('\n');
   const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');

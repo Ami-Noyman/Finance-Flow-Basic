@@ -30,13 +30,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'forecast', label: 'Forecast', icon: TrendingUp },
     { id: 'ai', label: 'AI Advisor', icon: BrainCircuit },
     { id: 'savings', label: 'Savings', icon: PiggyBank },
+    { id: 'investments', label: 'Investments', icon: TrendingUp },
     { id: 'liabilities', label: 'Liabilities', icon: CreditCard },
     { id: 'pension', label: 'Pension', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: SettingsIcon, alert: dbUnhealthy },
   ];
 
   const handleTabClick = (id: string) => {
-    // If user clicks Settings and DB is unhealthy, force the DB sub-tab
     if (id === 'settings' && dbUnhealthy) {
       setActiveTab('settings');
       setTimeout(() => {

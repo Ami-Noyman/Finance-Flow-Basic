@@ -245,7 +245,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       )}
 
       {/* 1. SUMMARY CARDS (QUICKEN STYLE - TOP PRIORITY) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><TrendingUp size={24}/></div>
@@ -261,14 +261,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
           </div>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Expense (Month)</p>
           <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.currentExpense, displayCurrency)}</h3>
-        </div>
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Layers size={24}/></div>
-            <div className="text-[10px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-2 py-1 rounded-lg">Net Worth</div>
-          </div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Global Assets</p>
-          <h3 className="text-2xl font-black text-gray-900">{formatCurrency(stats.netWorth, displayCurrency)}</h3>
         </div>
         <div className="bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
           <div className="flex justify-between items-start mb-4">

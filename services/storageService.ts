@@ -55,7 +55,6 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
         const result = await query;
         if (result.error) {
             const error = result.error;
-            // PGRST205: Missing table, 42P01: Relation does not exist
             const isSchemaError = ['42P01', 'PGRST204', 'PGRST205'].includes(error.code);
             if (isSchemaError) {
                 console.warn(`Supabase: Table '${tableName}' is not yet initialized in the DB. Returning empty array.`);
@@ -151,6 +150,7 @@ const mapRule = (row: any): TransactionRule => ({
 const ruleToDb = (rule: TransactionRule, userId: string) => ({
     id: rule.id,
     user_id: userId,
+    // Fix: access property payeePattern instead of incorrect payee_pattern
     payee_pattern: rule.payeePattern,
     amount_condition: rule.amountCondition,
     amount_value: rule.amountValue || null,
@@ -451,7 +451,7 @@ export const batchCreateCategories = async (names: string[]) => {
 };
 
 export const fetchAccountSubTypes = async (uid?: string): Promise<string[]> => {
-    const defaults = ['קרן השתלמות', 'קופת גמל', 'קרנות כספיות', 'פוליסת חיסכון'];
+    const defaults = ['קרן השתלמות', 'קופת גמל', 'קופת גמל להשקעה', 'קרנות כספיות', 'פוליסת חיסכון', 'תיק מנוהל', 'חשבון השקעות'];
     try {
         const { supabase, userId } = await getContext();
         const { data, error } = await supabase.from('account_sub_types').select('name').eq('user_id', uid || userId);
