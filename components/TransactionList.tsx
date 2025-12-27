@@ -14,9 +14,9 @@ interface TransactionListProps {
   rules: TransactionRule[];
   selectedAccountId: string | null;
   onAddTransaction: (t: Transaction, makeRecurring?: boolean) => void;
+  onAddCategory: (category: string) => void;
   onEditTransaction: (t: Transaction, makeRecurring?: boolean) => void;
   onDeleteTransaction: (id: string) => void;
-  onAddCategory: (category: string) => void;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({ 
@@ -81,11 +81,41 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const lookupHistoricalCategory = (payeeName: string) => {
+    if (!payeeName) return;
+    const normalized = payeeName.toLowerCase().trim();
+    
+    // Check rules first
+    const matchedRule = rules.find(r => r.isActive && normalized.includes(r.payeePattern.toLowerCase()));
+    if (matchedRule) {
+      setCategory(matchedRule.category);
+      setCustomCategory('');
+      return;
+    }
+
+    // Then history
+    const matches = transactions.filter(t => (t.payee || (t as any).description || '').toLowerCase().trim() === normalized);
+    if (matches.length > 0) {
+      const counts: Record<string, number> = {};
+      matches.forEach(m => counts[m.category] = (counts[m.category] || 0) + 1);
+      const topCategory = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      
+      if (categories.includes(topCategory)) {
+        setCategory(topCategory);
+        setCustomCategory('');
+      } else {
+        setCategory('Other');
+        setCustomCategory(topCategory);
+      }
+    }
+  };
+
   const handlePayeeChange = (value: string) => {
     setPayee(value);
     if (value.length > 0) {
-      // Fix: Explicitly type distinct as string[] to avoid unknown type error on filter/toLowerCase
-      const distinct: string[] = Array.from(new Set(transactions.map(t => (t.payee || (t as any).description || '') as string))).filter(p => !!p);
+      // Fix: Explicitly type the map results and use typed Set to avoid 'unknown[]' error
+      const payeesMapped = transactions.map(t => (t.payee || (t as any).description || '') as string).filter(p => !!p);
+      const distinct: string[] = Array.from(new Set<string>(payeesMapped));
       const filtered = distinct.filter(p => p.toLowerCase().includes(value.toLowerCase())).slice(0, 5);
       setPayeeSuggestions(filtered);
       setShowPayeeSuggestions(true);
@@ -97,17 +127,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const handleSelectPayee = (selectedPayee: string) => {
     setPayee(selectedPayee);
     setShowPayeeSuggestions(false);
-    // Find last category for this payee
-    const pastTx = transactions.find(t => (t.payee || (t as any).description) === selectedPayee);
-    if (pastTx && pastTx.category) {
-      if (categories.includes(pastTx.category)) {
-        setCategory(pastTx.category);
-        setCustomCategory('');
-      } else {
-        setCategory('Other');
-        setCustomCategory(pastTx.category);
-      }
-    }
+    lookupHistoricalCategory(selectedPayee);
   };
 
   const handleCategoryInputChange = (value: string) => {
@@ -127,6 +147,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     
     let finalCategory = category === 'Other' ? customCategory : category;
     
+    // AI only activates here IF category is still blank
     if (type !== TransactionType.TRANSFER && !finalCategory) {
       setIsAutoCategorizing(true);
       finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
@@ -319,6 +340,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     placeholder="e.g. Netflix" 
                     value={payee} 
                     onChange={e => handlePayeeChange(e.target.value)} 
+                    onBlur={() => lookupHistoricalCategory(payee)}
                     onFocus={() => payee.length > 0 && setShowPayeeSuggestions(true)}
                     className="w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold" 
                   />

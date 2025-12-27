@@ -100,6 +100,38 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const lookupHistoricalCategory = (payeeName: string) => {
+    if (!payeeName) return;
+    const normalized = payeeName.toLowerCase().trim();
+    
+    // Check rules first
+    const matchedRule = rules.find(r => r.isActive && normalized.includes(r.payeePattern.toLowerCase()));
+    if (matchedRule) {
+      setCategory(matchedRule.category);
+      setCustomCategory('');
+      return;
+    }
+
+    // Check history (last known for this payee)
+    const matches = transactions.filter(t => (t.payee || (t as any).description || '').toLowerCase().trim() === normalized);
+    const recMatches = recurring.filter(r => (r.payee || '').toLowerCase().trim() === normalized);
+    
+    const combined = [...matches, ...recMatches];
+    if (combined.length > 0) {
+      const counts: Record<string, number> = {};
+      combined.forEach(m => counts[m.category] = (counts[m.category] || 0) + 1);
+      const topCategory = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      
+      if (categories.includes(topCategory)) {
+        setCategory(topCategory);
+        setCustomCategory('');
+      } else if (topCategory !== 'Transfer') {
+        setCategory('Other');
+        setCustomCategory(topCategory);
+      }
+    }
+  };
+
   const handlePayeeInputChange = (value: string) => {
     setPayee(value);
     if (value.length > 0) {
@@ -118,17 +150,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const handleSelectPayeeSuggestion = (selected: string) => {
     setPayee(selected);
     setShowPayeeSuggestions(false);
-    // Find last used category
-    const past = transactions.find(t => (t.payee || (t as any).description) === selected) || recurring.find(r => r.payee === selected);
-    if (past && past.category) {
-      if (categories.includes(past.category)) {
-        setCategory(past.category);
-        setCustomCategory('');
-      } else if (past.category !== 'Transfer') {
-        setCategory('Other');
-        setCustomCategory(past.category);
-      }
-    }
+    lookupHistoricalCategory(selected);
   };
 
   const handleCategoryInputChange = (value: string) => {
@@ -193,6 +215,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     if (type === TransactionType.TRANSFER) {
         finalCategory = 'Transfer';
     } else if (!finalCategory) {
+        // AI only triggered if category is missing and lookup found nothing
         finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
     }
     
@@ -393,12 +416,12 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                 <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                     <tr>
                         <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Next Due</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Accounts</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Payee / Notes</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Category</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Freq</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Amount</th>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Actions</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Accounts</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Payee / Notes</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Category</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Freq</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Amount</th>
+                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -436,7 +459,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                                 <div className="flex justify-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => onMoveSingle?.(r)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" title="Post Now"><CheckCircle size={14}/></button>
                                 <button onClick={() => handleOpenModal(r)} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"><Edit2 size={14}/></button>
-                                <button onClick={() => onDeleteRecurring(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14}/></button>
+                                <button onClick={() => confirm("Delete commitment?") && onDeleteRecurring(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14}/></button>
                                 </div>
                             </td>
                         </tr>
@@ -537,26 +560,27 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
       {/* Commitment Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-black text-gray-800">{editingId ? 'Edit Commitment' : 'New Commitment'}</h3><button onClick={() => setIsModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none">&times;</button></div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in max-h-[90vh] overflow-y-auto border border-slate-100">
+            <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center"><h3 className="font-black text-gray-800">{editingId ? 'Edit Commitment' : 'New Commitment'}</h3><button onClick={() => setIsModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none transition-colors">&times;</button></div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Commitment Type</label>
-                  <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Commitment Type</label>
+                  <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                     <option value={TransactionType.EXPENSE}>Expense (-)</option>
                     <option value={TransactionType.INCOME}>Income (+)</option>
                     <option value={TransactionType.TRANSFER}>Transfer (⇄)</option>
                   </select>
                 </div>
                 <div className="relative" ref={payeeRef}>
-                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Payee</label>
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Payee</label>
                   <input 
                     type="text" 
                     required 
                     value={payee} 
                     onChange={e => handlePayeeInputChange(e.target.value)} 
+                    onBlur={() => lookupHistoricalCategory(payee)}
                     onFocus={() => payee.length > 0 && setShowPayeeSuggestions(true)}
                     className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" 
                     placeholder="e.g. Monthly Rent" 
@@ -575,22 +599,22 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">{type === TransactionType.TRANSFER ? 'Source Account' : 'Account'}</label>
-                  <select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">{type === TransactionType.TRANSFER ? 'Source Account' : 'Account'}</label>
+                  <select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                     {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
                   </select>
                 </div>
                 {type === TransactionType.TRANSFER ? (
                   <div>
-                    <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Destination Account</label>
-                    <select required value={toAccountId} onChange={e => setToAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
+                    <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Destination Account</label>
+                    <select required value={toAccountId} onChange={e => setToAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                       <option value="">Select Account...</option>
                       {sortedAccounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
                     </select>
                   </div>
                 ) : (
                   <div className="relative">
-                    <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Category</label>
+                    <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Category</label>
                     <div className="flex flex-col gap-2">
                         <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                             <option value="">Auto-categorize</option>
@@ -623,17 +647,17 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                 )}
               </div>
 
-              <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-16 resize-none outline-none focus:ring-2 focus:ring-brand-500" placeholder="Optional details..." /></div>
+              <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-16 resize-none outline-none focus:ring-2 focus:ring-brand-500 font-medium" placeholder="Optional details..." /></div>
 
               <div className="grid grid-cols-2 gap-5">
-                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
-                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Total Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="Blank for infinite" /></div>
+                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
+                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Total Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" placeholder="Blank for infinite" /></div>
               </div>
 
               <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Frequency</label>
-                  <select value={frequency} onChange={e => setFrequency(e.target.value as any)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Frequency</label>
+                  <select value={frequency} onChange={e => setFrequency(e.target.value as any)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                     <option value={Frequency.MONTHLY}>Monthly</option>
                     <option value={Frequency.WEEKLY}>Weekly</option>
                     <option value={Frequency.BIWEEKLY}>Bi-Weekly</option>
@@ -643,18 +667,18 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                     <option value={Frequency.CUSTOM}>Custom...</option>
                   </select>
                 </div>
-                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1">Start Date / Next Due</label><input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" /></div>
+                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Start Date / Next Due</label><input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" /></div>
               </div>
 
               {frequency === Frequency.CUSTOM && (
-                <div className="grid grid-cols-2 gap-5 p-4 bg-gray-50 rounded-xl border border-gray-200 animate-slide-down">
+                <div className="grid grid-cols-2 gap-5 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-slide-down">
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1.5 ml-1">Interval</label>
-                    <input type="number" min="1" value={customInterval} onChange={e => setCustomInterval(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500" />
+                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1.5 ml-1 tracking-widest">Interval</label>
+                    <input type="number" min="1" value={customInterval} onChange={e => setCustomInterval(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1.5 ml-1">Unit</label>
-                    <select value={customUnit} onChange={e => setCustomUnit(e.target.value as any)} className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1.5 ml-1 tracking-widest">Unit</label>
+                    <select value={customUnit} onChange={e => setCustomUnit(e.target.value as any)} className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
                       <option value="day">Day(s)</option>
                       <option value="week">Week(s)</option>
                       <option value="month">Month(s)</option>
@@ -664,7 +688,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                 </div>
               )}
 
-              <button type="submit" disabled={isProcessing} className="w-full bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2">{isProcessing ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Saving...</> : 'Save Commitment'}</button>
+              <button type="submit" disabled={isProcessing} className="w-full bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 uppercase tracking-widest text-xs">{isProcessing ? <><RefreshCw size={16} className="animate-spin" /> Saving...</> : 'Save Commitment'}</button>
             </form>
           </div>
         </div>
@@ -672,11 +696,11 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
       {/* Spend Limits (Budget) Modal */}
       {isBudgetModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
-            <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in border border-slate-100">
+            <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
               <h3 className="font-black text-gray-800">{editingBudgetId ? 'Edit Spend Limit' : 'New Spend Limit'}</h3>
-              <button onClick={() => setIsBudgetModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none">&times;</button>
+              <button onClick={() => setIsBudgetModalOpen(false)} className="text-2xl text-gray-400 hover:text-gray-600 leading-none transition-colors">&times;</button>
             </div>
             <form onSubmit={handleSubmitBudget} className="p-8 space-y-6">
               <div>
