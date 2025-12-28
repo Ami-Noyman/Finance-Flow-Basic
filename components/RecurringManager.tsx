@@ -14,11 +14,11 @@ interface RecurringManagerProps {
   categories: string[];
   rules: TransactionRule[];
   transactions?: Transaction[];
-  onAddRecurring: (r: RecurringTransaction) => void;
-  onEditRecurring: (r: RecurringTransaction) => void;
-  onDeleteRecurring: (id: string) => void;
-  onSaveCategoryBudget: (b: SmartCategoryBudget) => void;
-  onDeleteCategoryBudget: (id: string) => void;
+  onAddRecurring: (r: RecurringTransaction) => Promise<void>;
+  onEditRecurring: (r: RecurringTransaction) => Promise<void>;
+  onDeleteRecurring: (id: string) => Promise<void>;
+  onSaveCategoryBudget: (b: SmartCategoryBudget) => Promise<void>;
+  onDeleteCategoryBudget: (id: string) => Promise<void>;
   onAddCategory: (category: string) => void;
   onManualProcess?: () => void;
   onMoveSingle?: (r: RecurringTransaction) => void;
@@ -68,7 +68,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
-  const [totalOccurrences, setTotalOccurrences] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Type-ahead states
@@ -183,9 +182,9 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       setStartDate(r.nextDueDate || r.startDate || format(new Date(), 'yyyy-MM-dd'));
       setAccountId(r.accountId);
       setToAccountId(r.toAccountId || '');
-      setTotalOccurrences(r.totalOccurrences ? r.totalOccurrences.toString() : '');
     } else {
       resetForm();
+      // FIX: Explicitly initialize accountId to first available account
       if (sortedAccounts.length > 0) setAccountId(sortedAccounts[0].id);
     }
     setIsModalOpen(true);
@@ -215,7 +214,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     if (type === TransactionType.TRANSFER) {
         finalCategory = 'Transfer';
     } else if (!finalCategory) {
-        // AI only triggered if category is missing and lookup found nothing
         finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
     }
     
@@ -239,15 +237,17 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       startDate: editingId ? (recurring.find(r => r.id === editingId)?.startDate || startDate) : startDate,
       nextDueDate: startDate, 
       isActive: true,
-      totalOccurrences: totalOccurrences ? parseInt(totalOccurrences) : undefined,
+      totalOccurrences: undefined, // Total installments logic
       occurrencesProcessed: editingId ? (recurring.find(r => r.id === editingId)?.occurrencesProcessed || 0) : 0
     };
 
-    if (editingId) onEditRecurring(recData); else onAddRecurring(recData);
+    if (editingId) await onEditRecurring(recData); 
+    else await onAddRecurring(recData);
+    
     setIsProcessing(false); setIsModalOpen(false); resetForm();
   };
 
-  const handleSubmitBudget = (e: React.FormEvent) => {
+  const handleSubmitBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!budgetCategory || (!budgetLimit && !budgetUseAvg)) return;
     const b: SmartCategoryBudget = {
@@ -257,12 +257,12 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
         useAverage: budgetUseAvg,
         isActive: true
     };
-    onSaveCategoryBudget(b);
+    await onSaveCategoryBudget(b);
     setIsBudgetModalOpen(false);
   };
 
   const resetForm = () => {
-    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(sortedAccounts[0]?.id || ''); setTotalOccurrences(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month');
+    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(''); setToAccountId(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month');
     setPayeeSuggestions([]); setShowPayeeSuggestions(false);
     setCategorySuggestions([]); setShowCategorySuggestions(false);
   };
@@ -326,8 +326,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       return sum + (r.amount * multiplier);
     }, 0);
   }, [recurring]);
-
-  const tooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', padding: '16px', zIndex: 1000 };
 
   return (
     <div className="space-y-4 h-[calc(100vh-6rem)] flex flex-col animate-fade-in pb-2">
@@ -453,7 +451,6 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                                 <div className={`font-black text-xs ${r.type === 'income' ? 'text-green-600' : (r.type === 'transfer' ? 'text-blue-600' : 'text-red-600')}`}>
                                   {r.type === 'income' ? '+' : (r.type === 'transfer' ? '⇄ ' : '-')}{formatCurrency(r.amount, accounts.find(a=>a.id===r.accountId)?.currency)}
                                 </div>
-                                {r.totalOccurrences && <div className="text-[9px] text-gray-400 font-bold tracking-tight">{r.occurrencesProcessed || 0} of {r.totalOccurrences}</div>}
                             </td>
                             <td className="p-3 text-center">
                                 <div className="flex justify-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -601,6 +598,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                 <div>
                   <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">{type === TransactionType.TRANSFER ? 'Source Account' : 'Account'}</label>
                   <select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
+                    <option value="">Select Account...</option>
                     {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
                   </select>
                 </div>
@@ -651,7 +649,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-5">
                  <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
-                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Total Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" placeholder="Blank for infinite" /></div>
+                 <div className="opacity-50 pointer-events-none"><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Installments</label><input type="number" disabled className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none font-bold" placeholder="Infinite" /></div>
               </div>
 
               <div className="grid grid-cols-2 gap-5">

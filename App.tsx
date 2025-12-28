@@ -223,7 +223,32 @@ const App: React.FC = () => {
   const handleDeleteAccount = async (id: string) => { if (accounts.length <= 1) return alert("Min 1 account required."); setAccounts(prev => prev.filter(a => a.id !== id)); try { await deleteAccountFromDb(id); } catch (e) { console.error(e); } };
   const handleSaveRule = async (r: TransactionRule) => { setRules(prev => prev.some(item => item.id === r.id) ? prev.map(item => item.id === r.id ? r : item) : [...prev, r]); try { await saveRule(r); } catch (e) { console.error(e); } };
   const handleDeleteRule = async (id: string) => { setRules(prev => prev.filter(r => r.id !== id)); try { await deleteRule(id); } catch (e) { console.error(e); } };
-  const handleAddTransaction = async (newTx: Transaction) => { setTransactions(prev => [newTx, ...prev]); try { await createTransaction(newTx); } catch (e) { console.error(e); } };
+  
+  const handleAddTransaction = async (newTx: Transaction, makeRec?: boolean) => { 
+    setTransactions(prev => [newTx, ...prev]); 
+    try { 
+      await createTransaction(newTx); 
+      if (makeRec) {
+        const r: RecurringTransaction = {
+          id: crypto.randomUUID(),
+          amount: newTx.amount,
+          payee: newTx.payee,
+          category: newTx.category,
+          type: newTx.type,
+          accountId: newTx.accountId,
+          toAccountId: newTx.toAccountId,
+          frequency: Frequency.MONTHLY,
+          startDate: newTx.date,
+          nextDueDate: format(calculateNextDate(parseISO(newTx.date), Frequency.MONTHLY), 'yyyy-MM-dd'),
+          isActive: true,
+          occurrencesProcessed: 1 // We already processed the first one
+        };
+        await createRecurring(r);
+        setRecurring(prev => [...prev, r]);
+      }
+    } catch (e) { console.error(e); } 
+  };
+
   const handleEditTransaction = async (tx: Transaction) => { setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t)); try { await createTransaction(tx); } catch (e) { console.error(e); } };
   const handleDeleteTransaction = async (id: string) => { setTransactions(prev => prev.filter(t => t.id !== id)); try { await deleteTx(id); } catch (e) { console.error(e); } };
   const handleAddRecurring = async (r: RecurringTransaction) => { setRecurring(prev => [...prev, r]); try { await createRecurring(r); } catch (e) { console.error(e); } };

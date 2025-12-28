@@ -13,10 +13,10 @@ interface TransactionListProps {
   categories: string[];
   rules: TransactionRule[];
   selectedAccountId: string | null;
-  onAddTransaction: (t: Transaction, makeRecurring?: boolean) => void;
+  onAddTransaction: (t: Transaction, makeRecurring?: boolean) => Promise<void>;
   onAddCategory: (category: string) => void;
-  onEditTransaction: (t: Transaction, makeRecurring?: boolean) => void;
-  onDeleteTransaction: (id: string) => void;
+  onEditTransaction: (t: Transaction, makeRecurring?: boolean) => Promise<void>;
+  onDeleteTransaction: (id: string) => Promise<void>;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({ 
@@ -113,7 +113,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const handlePayeeChange = (value: string) => {
     setPayee(value);
     if (value.length > 0) {
-      // Fix: Explicitly type the map results and use typed Set to avoid 'unknown[]' error
       const payeesMapped = transactions.map(t => (t.payee || (t as any).description || '') as string).filter(p => !!p);
       const distinct: string[] = Array.from(new Set<string>(payeesMapped));
       const filtered = distinct.filter(p => p.toLowerCase().includes(value.toLowerCase())).slice(0, 5);
@@ -139,6 +138,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     } else {
       setShowCategorySuggestions(false);
     }
+  };
+
+  const openNew = () => {
+    resetForm();
+    // Default to first account or current filter
+    const defaultAcc = selectedAccountId || (sortedAccounts.length > 0 ? sortedAccounts[0].id : '');
+    setFormAccountId(defaultAcc);
+    setEditingId(null);
+    setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -173,8 +181,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       isReconciled: isReconciled
     };
 
-    if (editingId) onEditTransaction(txData, makeRecurring);
-    else onAddTransaction(txData, makeRecurring);
+    if (editingId) await onEditTransaction(txData, makeRecurring);
+    else await onAddTransaction(txData, makeRecurring);
     
     resetForm();
     setIsModalOpen(false);
@@ -182,7 +190,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   const resetForm = () => {
     setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setDate(format(new Date(), 'yyyy-MM-dd')); setToAccountId(''); setIsReconciled(false); setMakeRecurring(false);
-    if (!formAccountId && sortedAccounts.length > 0) setFormAccountId(sortedAccounts[0].id);
     setPayeeSuggestions([]); setShowPayeeSuggestions(false);
     setCategorySuggestions([]); setShowCategorySuggestions(false);
   };
@@ -248,7 +255,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   <Filter size={14} />
                   <span className="hidden sm:inline">Filter</span>
                 </button>
-                <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg transition-all whitespace-nowrap shadow-md text-xs font-black uppercase tracking-wider active:scale-95">
+                <button onClick={openNew} className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg transition-all whitespace-nowrap shadow-md text-xs font-black uppercase tracking-wider active:scale-95">
                   <Plus size={16} />
                   <span className="hidden sm:inline">New Entry</span>
                 </button>
