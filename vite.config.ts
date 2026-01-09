@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env vars regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '');
 
+  // BUILD-TIME LOGGING (Check Vercel Build Logs)
+  console.warn("--- BUILD-TIME ENV CHECK ---");
+  console.warn("Mode:", mode);
+  console.warn("CWD:", process.cwd());
+  console.warn("VITE_SUPABASE_URL (from loadEnv):", env.VITE_SUPABASE_URL ? "FOUND (Starts with " + env.VITE_SUPABASE_URL.substring(0, 10) + ")" : "MISSING");
+  console.warn("SUPABASE_URL (from process.env):", process.env.SUPABASE_URL ? "FOUND" : "MISSING");
+  console.warn("----------------------------");
+
   return {
     plugins: [react()],
     define: {
