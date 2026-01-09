@@ -24,7 +24,7 @@ interface RecurringManagerProps {
   onMoveSingle?: (r: RecurringTransaction) => void;
 }
 
-export const RecurringManager: React.FC<RecurringManagerProps> = ({ 
+export const RecurringManager: React.FC<RecurringManagerProps> = ({
   recurring,
   categoryBudgets,
   accounts,
@@ -45,7 +45,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
-  
+
   // Filtering state
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +68,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
+  const [totalOccurrences, setTotalOccurrences] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Type-ahead states
@@ -102,7 +103,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   const lookupHistoricalCategory = (payeeName: string) => {
     if (!payeeName) return;
     const normalized = payeeName.toLowerCase().trim();
-    
+
     // Check rules first
     const matchedRule = rules.find(r => r.isActive && normalized.includes(r.payeePattern.toLowerCase()));
     if (matchedRule) {
@@ -114,13 +115,13 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     // Check history (last known for this payee)
     const matches = transactions.filter(t => (t.payee || (t as any).description || '').toLowerCase().trim() === normalized);
     const recMatches = recurring.filter(r => (r.payee || '').toLowerCase().trim() === normalized);
-    
+
     const combined = [...matches, ...recMatches];
     if (combined.length > 0) {
       const counts: Record<string, number> = {};
       combined.forEach(m => counts[m.category] = (counts[m.category] || 0) + 1);
       const topCategory = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-      
+
       if (categories.includes(topCategory)) {
         setCategory(topCategory);
         setCustomCategory('');
@@ -182,6 +183,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       setStartDate(r.nextDueDate || r.startDate || format(new Date(), 'yyyy-MM-dd'));
       setAccountId(r.accountId);
       setToAccountId(r.toAccountId || '');
+      setTotalOccurrences(r.totalOccurrences ? r.totalOccurrences.toString() : '');
     } else {
       resetForm();
       // FIX: Explicitly initialize accountId to first available account
@@ -209,16 +211,16 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     e.preventDefault();
     if (!amount || !payee || !accountId) return;
     setIsProcessing(true);
-    
+
     let finalCategory = category === 'Other' ? customCategory : category;
     if (type === TransactionType.TRANSFER) {
-        finalCategory = 'Transfer';
+      finalCategory = 'Transfer';
     } else if (!finalCategory) {
-        finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
+      finalCategory = await categorizeTransaction(payee, parseFloat(amount), transactions, rules, categories);
     }
-    
+
     if (category === 'Other' && customCategory && !categories.includes(customCategory)) {
-        onAddCategory(customCategory);
+      onAddCategory(customCategory);
     }
 
     const recData: RecurringTransaction = {
@@ -235,15 +237,15 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       customInterval: frequency === Frequency.CUSTOM ? parseInt(customInterval) : undefined,
       customUnit: frequency === Frequency.CUSTOM ? customUnit : undefined,
       startDate: editingId ? (recurring.find(r => r.id === editingId)?.startDate || startDate) : startDate,
-      nextDueDate: startDate, 
+      nextDueDate: startDate,
       isActive: true,
-      totalOccurrences: undefined, // Total installments logic
+      totalOccurrences: totalOccurrences ? parseInt(totalOccurrences) : undefined,
       occurrencesProcessed: editingId ? (recurring.find(r => r.id === editingId)?.occurrencesProcessed || 0) : 0
     };
 
-    if (editingId) await onEditRecurring(recData); 
+    if (editingId) await onEditRecurring(recData);
     else await onAddRecurring(recData);
-    
+
     setIsProcessing(false); setIsModalOpen(false); resetForm();
   };
 
@@ -251,18 +253,18 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
     e.preventDefault();
     if (!budgetCategory || (!budgetLimit && !budgetUseAvg)) return;
     const b: SmartCategoryBudget = {
-        id: editingBudgetId || crypto.randomUUID(),
-        categoryName: budgetCategory,
-        monthlyLimit: parseFloat(budgetLimit) || 0,
-        useAverage: budgetUseAvg,
-        isActive: true
+      id: editingBudgetId || crypto.randomUUID(),
+      categoryName: budgetCategory,
+      monthlyLimit: parseFloat(budgetLimit) || 0,
+      useAverage: budgetUseAvg,
+      isActive: true
     };
     await onSaveCategoryBudget(b);
     setIsBudgetModalOpen(false);
   };
 
   const resetForm = () => {
-    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(''); setToAccountId(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month');
+    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(''); setToAccountId(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month'); setTotalOccurrences('');
     setPayeeSuggestions([]); setShowPayeeSuggestions(false);
     setCategorySuggestions([]); setShowCategorySuggestions(false);
   };
@@ -277,16 +279,16 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
   const filteredRecurring = useMemo(() => {
     return recurring.filter(r => {
-        const pName = getPayeeName(r).toLowerCase();
-        if (searchTerm && !pName.includes(searchTerm.toLowerCase())) return false;
-        if (filterCategory && r.category !== filterCategory) return false;
-        if (filterAccount && (r.accountId !== filterAccount && r.toAccountId !== filterAccount)) return false;
-        if (filterType && r.type !== filterType) return false;
-        if (filterMinAmount) {
-          const min = parseFloat(filterMinAmount);
-          if (!isNaN(min) && r.amount < min) return false;
-        }
-        return true;
+      const pName = getPayeeName(r).toLowerCase();
+      if (searchTerm && !pName.includes(searchTerm.toLowerCase())) return false;
+      if (filterCategory && r.category !== filterCategory) return false;
+      if (filterAccount && (r.accountId !== filterAccount && r.toAccountId !== filterAccount)) return false;
+      if (filterType && r.type !== filterType) return false;
+      if (filterMinAmount) {
+        const min = parseFloat(filterMinAmount);
+        if (!isNaN(min) && r.amount < min) return false;
+      }
+      return true;
     }).sort((a, b) => (a.nextDueDate || '').localeCompare(b.nextDueDate || ''));
   }, [recurring, searchTerm, filterCategory, filterAccount, filterType, filterMinAmount]);
 
@@ -330,228 +332,228 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   return (
     <div className="space-y-4 h-[calc(100vh-6rem)] flex flex-col animate-fade-in pb-2">
       <div className="flex justify-between items-center bg-white p-3 rounded-2xl shadow-sm border border-gray-100 shrink-0">
-          <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
-              <button onClick={() => setActiveTab('recurring')} className={`px-5 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'recurring' ? 'bg-brand-600 text-white shadow-md' : 'text-gray-500 hover:bg-white'}`}>
-                <Repeat size={16}/> Commitments
-              </button>
-              <button onClick={() => setActiveTab('smart')} className={`px-5 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'smart' ? 'bg-brand-600 text-white shadow-md' : 'text-gray-500 hover:bg-white'}`}>
-                <Target size={16}/> Spend Limits
-              </button>
-          </div>
+        <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
+          <button onClick={() => setActiveTab('recurring')} className={`px-5 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'recurring' ? 'bg-brand-600 text-white shadow-md' : 'text-gray-500 hover:bg-white'}`}>
+            <Repeat size={16} /> Commitments
+          </button>
+          <button onClick={() => setActiveTab('smart')} className={`px-5 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'smart' ? 'bg-brand-600 text-white shadow-md' : 'text-gray-500 hover:bg-white'}`}>
+            <Target size={16} /> Spend Limits
+          </button>
+        </div>
 
-          <div className="flex items-center gap-6">
-              <div className="text-right">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Commitment</p>
-                  <p className="text-lg font-black text-slate-900 leading-none">{formatCurrency(totalMonthlyCommitted)}</p>
-              </div>
-              <div className="h-8 w-px bg-gray-100"></div>
-              <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => setShowFilters(!showFilters)} 
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${showFilters ? 'bg-brand-600 border-brand-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                  >
-                      <Filter size={14} />
-                      Filter
-                  </button>
-                  <button onClick={onManualProcess} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black flex items-center gap-2 transition-all active:scale-95">
-                      <Play size={14} fill="currentColor"/> Run Processing
-                  </button>
-                  <button onClick={() => activeTab === 'recurring' ? handleOpenModal() : handleOpenBudgetModal()} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-black shadow-md transition-all active:scale-95">
-                      <Plus size={16}/> New {activeTab === 'recurring' ? 'Commitment' : 'Limit'}
-                  </button>
-              </div>
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Commitment</p>
+            <p className="text-lg font-black text-slate-900 leading-none">{formatCurrency(totalMonthlyCommitted)}</p>
           </div>
+          <div className="h-8 w-px bg-gray-100"></div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${showFilters ? 'bg-brand-600 border-brand-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Filter size={14} />
+              Filter
+            </button>
+            <button onClick={onManualProcess} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black flex items-center gap-2 transition-all active:scale-95">
+              <Play size={14} fill="currentColor" /> Run Processing
+            </button>
+            <button onClick={() => activeTab === 'recurring' ? handleOpenModal() : handleOpenBudgetModal()} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-black shadow-md transition-all active:scale-95">
+              <Plus size={16} /> New {activeTab === 'recurring' ? 'Commitment' : 'Limit'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {activeTab === 'recurring' && showFilters && (
         <div className="bg-gray-50 p-4 border border-gray-100 rounded-2xl grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-fade-in shadow-inner shrink-0">
-            <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Payee Search</label>
-                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Type to search..." className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500" />
-            </div>
-            <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account</label>
-                <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
-                    <option value="">All Accounts</option>
-                    {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-            </div>
-            <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
-                <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
-                    <option value="">All Categories</option>
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-            </div>
-            <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Type</label>
-                <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
-                    <option value="">All Types</option>
-                    <option value={TransactionType.EXPENSE}>Expense</option>
-                    <option value={TransactionType.INCOME}>Income</option>
-                    <option value={TransactionType.TRANSFER}>Transfer</option>
-                </select>
-            </div>
-            <div className="space-y-1.5">
-                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Min Amount</label>
-                <input type="number" value={filterMinAmount} onChange={e => setFilterMinAmount(e.target.value)} placeholder="0.00" className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500" />
-            </div>
-            <div className="flex items-end">
-                <button 
-                  onClick={resetFilters}
-                  className="w-full flex items-center justify-center gap-2 p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all text-[9px] font-black uppercase tracking-widest border border-dashed border-gray-300"
-                >
-                    <RotateCcw size={12} /> Reset
-                </button>
-            </div>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Payee Search</label>
+            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Type to search..." className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account</label>
+            <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="">All Accounts</option>
+              {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="">All Categories</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Type</label>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="">All Types</option>
+              <option value={TransactionType.EXPENSE}>Expense</option>
+              <option value={TransactionType.INCOME}>Income</option>
+              <option value={TransactionType.TRANSFER}>Transfer</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Min Amount</label>
+            <input type="number" value={filterMinAmount} onChange={e => setFilterMinAmount(e.target.value)} placeholder="0.00" className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={resetFilters}
+              className="w-full flex items-center justify-center gap-2 p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all text-[9px] font-black uppercase tracking-widest border border-dashed border-gray-300"
+            >
+              <RotateCcw size={12} /> Reset
+            </button>
+          </div>
         </div>
       )}
 
       {activeTab === 'recurring' ? (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col overflow-hidden min-h-0">
-            <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse min-w-[900px]">
-                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                    <tr>
-                        <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Next Due</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Accounts</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Payee / Notes</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Category</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Freq</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Amount</th>
-                        <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {filteredRecurring.map(r => (
-                        <tr key={r.id} className="hover:bg-gray-50/50 group transition-colors">
-                            <td className="p-3 text-xs text-gray-600 font-bold whitespace-nowrap">{r.nextDueDate}</td>
-                            <td className="p-3 text-[10px] font-bold text-gray-500">
-                                {r.type === TransactionType.TRANSFER ? (
-                                  <div className="flex items-center gap-1">
-                                    <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">{accounts.find(a=>a.id===r.accountId)?.name}</span>
-                                    <ArrowRightLeft size={8} className="text-blue-300"/>
-                                    <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">{accounts.find(a=>a.id===r.toAccountId)?.name}</span>
-                                  </div>
-                                ) : (
-                                  <span className="bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[120px] inline-block">{accounts.find(a=>a.id===r.accountId)?.name}</span>
-                                )}
-                            </td>
-                            <td className="p-3">
-                                <div className="font-bold text-xs text-gray-900 leading-tight">{getPayeeName(r)}</div>
-                                {r.notes && <div className="text-[9px] text-gray-400 italic truncate max-w-[200px]">{r.notes}</div>}
-                            </td>
-                            <td className="p-3">
-                                <span className="px-1.5 py-0.5 bg-gray-50 border rounded text-[9px] font-black text-gray-500 uppercase">{r.category}</span>
-                            </td>
-                            <td className="p-3">
-                                <div className="text-[10px] font-bold text-gray-700 flex items-center gap-1.5"><Clock size={10} className="text-brand-500"/> {r.frequency === Frequency.CUSTOM ? `${r.customInterval} ${r.customUnit}` : r.frequency}</div>
-                            </td>
-                            <td className="p-3 text-right">
-                                <div className={`font-black text-xs ${r.type === 'income' ? 'text-green-600' : (r.type === 'transfer' ? 'text-blue-600' : 'text-red-600')}`}>
-                                  {r.type === 'income' ? '+' : (r.type === 'transfer' ? '⇄ ' : '-')}{formatCurrency(r.amount, accounts.find(a=>a.id===r.accountId)?.currency)}
-                                </div>
-                            </td>
-                            <td className="p-3 text-center">
-                                <div className="flex justify-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => onMoveSingle?.(r)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" title="Post Now"><CheckCircle size={14}/></button>
-                                <button onClick={() => handleOpenModal(r)} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"><Edit2 size={14}/></button>
-                                <button onClick={() => confirm("Delete commitment?") && onDeleteRecurring(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14}/></button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
+              <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                <tr>
+                  <th className="p-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">Next Due</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Accounts</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Payee / Notes</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Category</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Freq</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Amount</th>
+                  <th className="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredRecurring.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50/50 group transition-colors">
+                    <td className="p-3 text-xs text-gray-600 font-bold whitespace-nowrap">{r.nextDueDate}</td>
+                    <td className="p-3 text-[10px] font-bold text-gray-500">
+                      {r.type === TransactionType.TRANSFER ? (
+                        <div className="flex items-center gap-1">
+                          <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">{accounts.find(a => a.id === r.accountId)?.name}</span>
+                          <ArrowRightLeft size={8} className="text-blue-300" />
+                          <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">{accounts.find(a => a.id === r.toAccountId)?.name}</span>
+                        </div>
+                      ) : (
+                        <span className="bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[120px] inline-block">{accounts.find(a => a.id === r.accountId)?.name}</span>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <div className="font-bold text-xs text-gray-900 leading-tight">{getPayeeName(r)}</div>
+                      {r.notes && <div className="text-[9px] text-gray-400 italic truncate max-w-[200px]">{r.notes}</div>}
+                    </td>
+                    <td className="p-3">
+                      <span className="px-1.5 py-0.5 bg-gray-50 border rounded text-[9px] font-black text-gray-500 uppercase">{r.category}</span>
+                    </td>
+                    <td className="p-3">
+                      <div className="text-[10px] font-bold text-gray-700 flex items-center gap-1.5"><Clock size={10} className="text-brand-500" /> {r.frequency === Frequency.CUSTOM ? `${r.customInterval} ${r.customUnit}` : r.frequency}</div>
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className={`font-black text-xs ${r.type === 'income' ? 'text-green-600' : (r.type === 'transfer' ? 'text-blue-600' : 'text-red-600')}`}>
+                        {r.type === 'income' ? '+' : (r.type === 'transfer' ? '⇄ ' : '-')}{formatCurrency(r.amount, accounts.find(a => a.id === r.accountId)?.currency)}
+                      </div>
+                    </td>
+                    <td className="p-3 text-center">
+                      <div className="flex justify-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => onMoveSingle?.(r)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" title="Post Now"><CheckCircle size={14} /></button>
+                        <button onClick={() => handleOpenModal(r)} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"><Edit2 size={14} /></button>
+                        <button onClick={() => confirm("Delete commitment?") && onDeleteRecurring(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
-            </div>
+          </div>
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-auto pr-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {categoryBudgets.map(b => {
-                    const spentActual = categorySpentCurrentMonth[b.categoryName] || 0;
-                    const committedUpcoming = calculateRemainingCommittedSpend(b.categoryName, recurring, transactions);
-                    const totalEstimatedSpend = spentActual + committedUpcoming;
-                    
-                    const effectiveLimit = getEffectiveCategoryBudget(b, transactions);
-                    const percentTotal = Math.min(100, (totalEstimatedSpend / effectiveLimit) * 100);
-                    const percentActual = Math.min(100, (spentActual / effectiveLimit) * 100);
-                    
-                    const isOver = totalEstimatedSpend > effectiveLimit;
-                    const remainingBudget = Math.max(0, effectiveLimit - totalEstimatedSpend);
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {categoryBudgets.map(b => {
+              const spentActual = categorySpentCurrentMonth[b.categoryName] || 0;
+              const committedUpcoming = calculateRemainingCommittedSpend(b.categoryName, recurring, transactions);
+              const totalEstimatedSpend = spentActual + committedUpcoming;
 
-                    return (
-                        <div key={b.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-brand-200 transition-all">
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <div className="w-2 h-2 rounded-full bg-brand-500"></div>
-                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Category Budget</div>
-                                    </div>
-                                    <h4 className="text-xl font-black text-slate-800">{b.categoryName}</h4>
-                                </div>
-                                <div className="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => handleOpenBudgetModal(b)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"><Edit2 size={16}/></button>
-                                    <button onClick={() => confirm("Delete limit?") && onDeleteCategoryBudget(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16}/></button>
-                                </div>
-                            </div>
+              const effectiveLimit = getEffectiveCategoryBudget(b, transactions);
+              const percentTotal = Math.min(100, (totalEstimatedSpend / effectiveLimit) * 100);
+              const percentActual = Math.min(100, (spentActual / effectiveLimit) * 100);
 
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <div className="text-[9px] font-black text-slate-400 uppercase">Actual Spent</div>
-                                        <div className="text-lg font-black text-slate-700">{formatCurrency(spentActual)}</div>
-                                    </div>
-                                    <div className="space-y-1 border-l pl-4 border-slate-100">
-                                        <div className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1">Upcoming <Info size={8}/></div>
-                                        <div className="text-lg font-black text-orange-500">{formatCurrency(committedUpcoming)}</div>
-                                    </div>
-                                </div>
+              const isOver = totalEstimatedSpend > effectiveLimit;
+              const remainingBudget = Math.max(0, effectiveLimit - totalEstimatedSpend);
 
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-end px-1">
-                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Budget Utilization</div>
-                                        <div className="text-right">
-                                            <span className={`text-sm font-black ${isOver ? 'text-red-600' : 'text-slate-900'}`}>{formatCurrency(totalEstimatedSpend)}</span>
-                                            <span className="text-[10px] text-slate-400 font-bold ml-1">/ {Math.round(effectiveLimit)}</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
-                                        <div 
-                                            className="h-full absolute left-0 bg-brand-500 transition-all duration-700 z-20 rounded-full" 
-                                            style={{ width: `${percentActual}%` }}
-                                        />
-                                        <div 
-                                            className={`h-full absolute left-0 transition-all duration-700 z-10 rounded-full ${isOver ? 'bg-red-500' : 'bg-orange-300'}`} 
-                                            style={{ width: `${percentTotal}%` }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-wider ${isOver ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                                        {isOver ? <AlertTriangle size={12}/> : <CheckCircle size={12}/>}
-                                        {isOver ? `${formatCurrency(totalEstimatedSpend - effectiveLimit)} OVER` : `${formatCurrency(remainingBudget)} FREE`}
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Limit Engine</div>
-                                        <div className="text-xs font-black text-slate-600">{b.useAverage ? 'Auto-Average' : 'Manual Limit'}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-
-                {categoryBudgets.length === 0 && (
-                    <div className="col-span-full py-16 flex flex-col items-center text-center bg-gray-50 border-4 border-dashed border-gray-100 rounded-[3rem]">
-                        <div className="p-6 bg-white rounded-3xl shadow-sm text-slate-300 mb-6"><BarChart3 size={48}/></div>
-                        <h4 className="text-xl font-black text-slate-800">No Spend Limits Set</h4>
-                        <p className="text-sm text-slate-500 max-w-xs mt-2 font-medium">Add category budgets to track real-time spend plus upcoming commitments automatically.</p>
-                        <button onClick={() => handleOpenBudgetModal()} className="mt-8 bg-brand-600 text-white px-8 py-3 rounded-2xl font-black shadow-xl shadow-brand-500/20 flex items-center gap-2"><Plus size={20}/> Create First Limit</button>
+              return (
+                <div key={b.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-brand-200 transition-all">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-brand-500"></div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Category Budget</div>
+                      </div>
+                      <h4 className="text-xl font-black text-slate-800">{b.categoryName}</h4>
                     </div>
-                )}
-            </div>
+                    <div className="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleOpenBudgetModal(b)} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"><Edit2 size={16} /></button>
+                      <button onClick={() => confirm("Delete limit?") && onDeleteCategoryBudget(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <div className="text-[9px] font-black text-slate-400 uppercase">Actual Spent</div>
+                        <div className="text-lg font-black text-slate-700">{formatCurrency(spentActual)}</div>
+                      </div>
+                      <div className="space-y-1 border-l pl-4 border-slate-100">
+                        <div className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1">Upcoming <Info size={8} /></div>
+                        <div className="text-lg font-black text-orange-500">{formatCurrency(committedUpcoming)}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-end px-1">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Budget Utilization</div>
+                        <div className="text-right">
+                          <span className={`text-sm font-black ${isOver ? 'text-red-600' : 'text-slate-900'}`}>{formatCurrency(totalEstimatedSpend)}</span>
+                          <span className="text-[10px] text-slate-400 font-bold ml-1">/ {Math.round(effectiveLimit)}</span>
+                        </div>
+                      </div>
+                      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
+                        <div
+                          className="h-full absolute left-0 bg-brand-500 transition-all duration-700 z-20 rounded-full"
+                          style={{ width: `${percentActual}%` }}
+                        />
+                        <div
+                          className={`h-full absolute left-0 transition-all duration-700 z-10 rounded-full ${isOver ? 'bg-red-500' : 'bg-orange-300'}`}
+                          style={{ width: `${percentTotal}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-wider ${isOver ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                        {isOver ? <AlertTriangle size={12} /> : <CheckCircle size={12} />}
+                        {isOver ? `${formatCurrency(totalEstimatedSpend - effectiveLimit)} OVER` : `${formatCurrency(remainingBudget)} FREE`}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Limit Engine</div>
+                        <div className="text-xs font-black text-slate-600">{b.useAverage ? 'Auto-Average' : 'Manual Limit'}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {categoryBudgets.length === 0 && (
+              <div className="col-span-full py-16 flex flex-col items-center text-center bg-gray-50 border-4 border-dashed border-gray-100 rounded-[3rem]">
+                <div className="p-6 bg-white rounded-3xl shadow-sm text-slate-300 mb-6"><BarChart3 size={48} /></div>
+                <h4 className="text-xl font-black text-slate-800">No Spend Limits Set</h4>
+                <p className="text-sm text-slate-500 max-w-xs mt-2 font-medium">Add category budgets to track real-time spend plus upcoming commitments automatically.</p>
+                <button onClick={() => handleOpenBudgetModal()} className="mt-8 bg-brand-600 text-white px-8 py-3 rounded-2xl font-black shadow-xl shadow-brand-500/20 flex items-center gap-2"><Plus size={20} /> Create First Limit</button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -572,15 +574,15 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                 </div>
                 <div className="relative" ref={payeeRef}>
                   <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Payee</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={payee} 
-                    onChange={e => handlePayeeInputChange(e.target.value)} 
+                  <input
+                    type="text"
+                    required
+                    value={payee}
+                    onChange={e => handlePayeeInputChange(e.target.value)}
                     onBlur={() => lookupHistoricalCategory(payee)}
                     onFocus={() => payee.length > 0 && setShowPayeeSuggestions(true)}
-                    className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" 
-                    placeholder="e.g. Monthly Rent" 
+                    className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold"
+                    placeholder="e.g. Monthly Rent"
                   />
                   {showPayeeSuggestions && payeeSuggestions.length > 0 && (
                     <div className="absolute z-[110] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
@@ -614,32 +616,32 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                   <div className="relative">
                     <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Category</label>
                     <div className="flex flex-col gap-2">
-                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
-                            <option value="">Auto-categorize</option>
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                            <option value="Other">+ New Category...</option>
-                        </select>
-                        {category === 'Other' && (
-                            <div className="relative" ref={categoryInputRef}>
-                                <input 
-                                    type="text" 
-                                    placeholder="Type Category Name..." 
-                                    value={customCategory} 
-                                    onChange={e => handleCategoryInputChange(e.target.value)} 
-                                    onFocus={() => customCategory.length > 0 && setShowCategorySuggestions(true)}
-                                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold" 
-                                />
-                                {showCategorySuggestions && categorySuggestions.length > 0 && (
-                                    <div className="absolute z-[110] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
-                                        {categorySuggestions.map((s, idx) => (
-                                            <button key={idx} type="button" onClick={() => { setCategory(s); setCustomCategory(''); setShowCategorySuggestions(false); }} className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-brand-50 text-gray-700 transition-colors border-b last:border-b-0">
-                                                {s}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
+                      <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500 font-bold">
+                        <option value="">Auto-categorize</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="Other">+ New Category...</option>
+                      </select>
+                      {category === 'Other' && (
+                        <div className="relative" ref={categoryInputRef}>
+                          <input
+                            type="text"
+                            placeholder="Type Category Name..."
+                            value={customCategory}
+                            onChange={e => handleCategoryInputChange(e.target.value)}
+                            onFocus={() => customCategory.length > 0 && setShowCategorySuggestions(true)}
+                            className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold"
+                          />
+                          {showCategorySuggestions && categorySuggestions.length > 0 && (
+                            <div className="absolute z-[110] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                              {categorySuggestions.map((s, idx) => (
+                                <button key={idx} type="button" onClick={() => { setCategory(s); setCustomCategory(''); setShowCategorySuggestions(false); }} className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-brand-50 text-gray-700 transition-colors border-b last:border-b-0">
+                                  {s}
+                                </button>
+                              ))}
                             </div>
-                        )}
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -648,8 +650,9 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
               <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-16 resize-none outline-none focus:ring-2 focus:ring-brand-500 font-medium" placeholder="Optional details..." /></div>
 
               <div className="grid grid-cols-2 gap-5">
-                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
-                 <div className="opacity-50 pointer-events-none"><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Installments</label><input type="number" disabled className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none font-bold" placeholder="Infinite" /></div>
+                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Amount</label><input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
+                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" placeholder="Infinite" /></div>
+
               </div>
 
               <div className="grid grid-cols-2 gap-5">
@@ -709,47 +712,47 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
               </div>
 
               <div className="space-y-4">
-                 <div className="flex items-center justify-between px-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Limit Strategy</label>
-                 </div>
-                 <div className="grid grid-cols-2 gap-3">
-                    <button type="button" onClick={() => setBudgetUseAvg(false)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${!budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
-                        <Edit2 size={20}/>
-                        <span className="text-[10px] font-black uppercase">Manual Set</span>
-                    </button>
-                    <button type="button" onClick={() => setBudgetUseAvg(true)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
-                        <RefreshCw size={20}/>
-                        <span className="text-[10px] font-black uppercase">Auto-Average</span>
-                    </button>
-                 </div>
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Limit Strategy</label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setBudgetUseAvg(false)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${!budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                    <Edit2 size={20} />
+                    <span className="text-[10px] font-black uppercase">Manual Set</span>
+                  </button>
+                  <button type="button" onClick={() => setBudgetUseAvg(true)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${budgetUseAvg ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                    <RefreshCw size={20} />
+                    <span className="text-[10px] font-black uppercase">Auto-Average</span>
+                  </button>
+                </div>
               </div>
 
               {!budgetUseAvg && (
                 <div className="animate-fade-in">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Monthly Spending Limit</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    required 
-                    value={budgetLimit} 
-                    onChange={e => setBudgetLimit(e.target.value)} 
-                    placeholder="0.00" 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-black outline-none focus:ring-4 focus:ring-brand-500/10" 
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={budgetLimit}
+                    onChange={e => setBudgetLimit(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-black outline-none focus:ring-4 focus:ring-brand-500/10"
                   />
                 </div>
               )}
 
               {budgetUseAvg && (
                 <div className="p-4 bg-blue-50 rounded-2xl flex items-start gap-3 border border-blue-100 animate-fade-in">
-                    <Info size={18} className="text-blue-600 shrink-0 mt-0.5"/>
-                    <p className="text-[10px] font-bold text-blue-800 leading-relaxed uppercase">
-                      Average Strategy Active: The limit will automatically calculate based on your spending history for this category over the last 12 months.
-                    </p>
+                  <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-bold text-blue-800 leading-relaxed uppercase">
+                    Average Strategy Active: The limit will automatically calculate based on your spending history for this category over the last 12 months.
+                  </p>
                 </div>
               )}
 
               <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-2xl font-black shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 uppercase tracking-widest text-xs">
-                <Save size={18}/> {editingBudgetId ? 'Update Strategy' : 'Activate Limit'}
+                <Save size={18} /> {editingBudgetId ? 'Update Strategy' : 'Activate Limit'}
               </button>
             </form>
           </div>
