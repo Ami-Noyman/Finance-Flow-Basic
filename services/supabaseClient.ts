@@ -3,9 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 
 const CONFIG_KEY = 'financeflow_supabase_config';
 
-// Credentials are pulled from environment variables (Vite/Vercel/Production)
-const ENV_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+// Detect environment variables from Vite or process.env (Vercel)
+const ENV_URL = import.meta.env.VITE_SUPABASE_URL ||
+    (import.meta.env as any).SUPABASE_URL ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "") ||
+    "";
+
+const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    (import.meta.env as any).SUPABASE_ANON_KEY ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "") ||
+    "";
 
 /**
  * Returns true if the environment variables are already set (e.g. on Vercel or local .env)
