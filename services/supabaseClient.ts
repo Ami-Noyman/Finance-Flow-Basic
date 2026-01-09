@@ -4,16 +4,14 @@ import { createClient } from '@supabase/supabase-js';
 const CONFIG_KEY = 'financeflow_supabase_config';
 
 // Detect environment variables from Vite or process.env (Vercel)
-// We use literal strings so Vite's 'define' replacement works correctly
-const ENV_URL = import.meta.env.VITE_SUPABASE_URL ||
-    (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : "") ||
-    (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "") ||
-    "";
+// We use simple assignments so Vite's 'define' replacement works most reliably
+const VITE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const VITE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const RAW_URL = (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "") || "";
+const RAW_KEY = (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "") || "";
 
-const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : "") ||
-    (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "") ||
-    "";
+const ENV_URL = VITE_URL || RAW_URL;
+const ENV_KEY = VITE_KEY || RAW_KEY;
 
 /**
  * Returns true if the environment variables are already set (e.g. on Vercel or local .env)
@@ -50,8 +48,15 @@ export const getDebugInfo = () => {
     return {
         hasUrl: !!config.url,
         hasKey: !!config.key,
-        urlPreview: config.url ? `${config.url.substring(0, 12)}...` : 'NONE',
-        source: isPreconfigured() ? 'Environment (Vercel)' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED')
+        urlValue: config.url || 'NONE',
+        keyPreview: config.url && config.key ? `${config.key.substring(0, 10)}...` : 'NONE',
+        source: isPreconfigured() ? 'Environment (Vercel)' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED'),
+        envVariables: {
+            VITE_URL: !!VITE_URL,
+            VITE_KEY: !!VITE_KEY,
+            RAW_URL: !!RAW_URL,
+            RAW_KEY: !!RAW_KEY
+        }
     };
 };
 

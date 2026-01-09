@@ -29,6 +29,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [configSuccess, setConfigSuccess] = useState(false);
+    const [showDebug, setShowDebug] = useState(false);
 
     // Config Form State
     const [supabaseUrl, setSupabaseUrl] = useState('');
@@ -132,7 +133,18 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                         </h2>
                     </div>
 
-                    {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-red-100"><AlertCircle size={16} className="mt-0.5 shrink-0" /><span>{error}</span></div>}
+                    {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-red-100 flex-col"><div className="flex items-start gap-2"><AlertCircle size={16} className="mt-0.5 shrink-0" /><span>{error}</span></div><button onClick={() => setShowDebug(!showDebug)} className="text-[10px] font-bold uppercase tracking-wider text-red-400 hover:text-red-500 mt-1 ml-6">Debug Info</button></div>}
+                    {showDebug && (
+                        <div className="bg-gray-900 text-green-400 p-4 rounded-lg text-[10px] font-mono mb-6 overflow-auto max-h-40 border border-gray-800 shadow-inner">
+                            <div className="flex justify-between border-b border-gray-800 pb-1 mb-1"><span>SOURCE:</span> <span>{debug.source}</span></div>
+                            <div className="flex justify-between"><span>DETECTED URL:</span> <span className="text-gray-400">{debug.urlValue}</span></div>
+                            <div className="flex justify-between"><span>KEY PREVIEW:</span> <span className="text-gray-400">{debug.keyPreview}</span></div>
+                            <div className="mt-2 text-gray-500 border-t border-gray-800 pt-1">DETECTION FLAGS:</div>
+                            {Object.entries(debug.envVariables).map(([k, v]) => (
+                                <div key={k} className="flex justify-between"><span>{k}:</span> <span className={v ? 'text-green-500' : 'text-red-500'}>{v ? 'FOUND' : 'MISSING'}</span></div>
+                            ))}
+                        </div>
+                    )}
                     {successMsg && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-green-200"><Mail size={16} className="mt-0.5 shrink-0" /><span>{successMsg}</span></div>}
                     {configSuccess && <div className="bg-green-50 text-green-700 p-4 rounded-lg text-sm mb-6 flex items-center gap-2 justify-center border border-green-200 font-bold"><CheckCircle size={18} /><span>Connected!</span></div>}
 
