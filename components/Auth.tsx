@@ -125,7 +125,7 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
 
                     <div className="text-center mb-8">
                         <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
-                            {mode === 'config' ? <Settings size={32} /> : (mode === 'reset' ? <KeyRound size={32} /> : <Database size={32} />)}
+                            {mode === 'reset' ? <KeyRound size={32} /> : <Database size={32} />}
                         </div>
                         <h2 className="text-2xl font-bold text-gray-800">
                             {mode === 'reset' ? 'Reset Password' : (mode === 'login' ? 'Welcome Back' : 'Join Us')}
