@@ -4,14 +4,15 @@ import { createClient } from '@supabase/supabase-js';
 const CONFIG_KEY = 'financeflow_supabase_config';
 
 // Detect environment variables from Vite or process.env (Vercel)
+// We use literal strings so Vite's 'define' replacement works correctly
 const ENV_URL = import.meta.env.VITE_SUPABASE_URL ||
-    (import.meta.env as any).SUPABASE_URL ||
-    (globalThis as any).process?.env?.SUPABASE_URL ||
+    (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : "") ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "") ||
     "";
 
 const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    (import.meta.env as any).SUPABASE_ANON_KEY ||
-    (globalThis as any).process?.env?.SUPABASE_ANON_KEY ||
+    (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : "") ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "") ||
     "";
 
 /**
