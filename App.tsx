@@ -11,7 +11,7 @@ import { AssetClassDashboard } from './components/AssetClassDashboard';
 import { Auth } from './components/Auth';
 import { HelpPanel } from './components/HelpPanel';
 import { Transaction, RecurringTransaction, Account, TransactionType, Frequency, AmountType, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from './types';
-import { 
+import {
   fetchTransactions, createAccount as saveAccountToDb, batchCreateAccounts, updateAccountsLinks, fetchAccounts, fetchRecurring, createRecurring, batchCreateRecurring, fetchCategories, createCategory, batchCreateCategories, deleteAccount as deleteAccountFromDb, deleteRecurring, deleteTransaction as deleteTx, clearAllUserData, batchCreateTransactions,
   fetchCategoryBudgets, batchCreateCategoryBudgets, saveCategoryBudget, deleteCategoryBudget, createTransaction, fetchValuations, batchCreateValuations, saveValuation, deleteValuation, createAccountSubType, batchCreateAccountSubTypes,
   fetchGoals, saveGoal, deleteGoal, batchCreateGoals, fetchRules, saveRule, deleteRule
@@ -25,7 +25,7 @@ import { Chat } from "@google/genai";
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isSetup, setIsSetup] = useState(isConfigured());
+  const [isSetup, setIsSetup] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restorationProgress, setRestorationProgress] = useState('');
@@ -38,28 +38,28 @@ const App: React.FC = () => {
   const [valuations, setValuations] = useState<Valuation[]>([]);
   const [goals, setGoals] = useState<FinancialGoal[]>([]);
   const [rules, setRules] = useState<TransactionRule[]>([]);
-  
+
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
   const chatSessionRef = useRef<Chat | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [financialInsight, setFinancialInsight] = useState<string | null>(null);
-  
+
   const mainContentRef = useRef<HTMLDivElement>(null);
 
   const processDueRecurring = async (currentRecurring: RecurringTransaction[], currentTransactions: Transaction[]) => {
     if (!currentRecurring.length || !session?.user) return;
-    
+
     const today = startOfDay(new Date());
     const newTransactions: Transaction[] = [];
     const updatedRecurring: RecurringTransaction[] = [];
-    
+
     const workingRecurring = JSON.parse(JSON.stringify(currentRecurring)) as RecurringTransaction[];
 
     for (let r of workingRecurring) {
       if (!r.isActive) continue;
-      
+
       let nextDue = parseISO(r.nextDueDate);
       let processedCount = r.occurrencesProcessed || 0;
       let hasPostedForThisRule = false;
@@ -88,20 +88,20 @@ const App: React.FC = () => {
         newTransactions.push(newTx);
         processedCount++;
         hasPostedForThisRule = true;
-        
+
         nextDue = calculateNextDate(nextDue, r.frequency, r.customInterval, r.customUnit);
-        
+
         r.nextDueDate = format(nextDue, 'yyyy-MM-dd');
         r.occurrencesProcessed = processedCount;
 
         if (r.totalOccurrences && processedCount >= r.totalOccurrences) {
-           r.isActive = false;
-           break;
+          r.isActive = false;
+          break;
         }
       }
-      
+
       if (hasPostedForThisRule) {
-          updatedRecurring.push(r);
+        updatedRecurring.push(r);
       }
     }
 
@@ -109,13 +109,13 @@ const App: React.FC = () => {
       try {
         await batchCreateTransactions(newTransactions);
         for (const rec of updatedRecurring) {
-            await createRecurring(rec); 
+          await createRecurring(rec);
         }
-        
+
         setTransactions(prev => [...newTransactions, ...prev]);
         setRecurring(prev => prev.map(old => {
-            const found = updatedRecurring.find(u => u.id === old.id);
-            return found ? found : old;
+          const found = updatedRecurring.find(u => u.id === old.id);
+          return found ? found : old;
         }));
       } catch (e) {
         console.error("[Recurring Engine] Error:", e);
@@ -125,10 +125,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleTabChange = (e: any) => {
-        if (e.detail) {
-            const [tab] = e.detail.split(':');
-            setActiveTab(tab);
-        }
+      if (e.detail) {
+        const [tab] = e.detail.split(':');
+        setActiveTab(tab);
+      }
     };
     window.addEventListener('changeTab', handleTabChange);
     return () => window.removeEventListener('changeTab', handleTabChange);
@@ -137,11 +137,11 @@ const App: React.FC = () => {
   useEffect(() => {
     const supabase = initSupabase();
     if (!supabase) { setIsLoading(false); return; }
-    
+
     supabase.auth.getSession().then(({ data: { session }, error }: any) => {
       if (error) {
-          supabase.auth.signOut().then(() => { setSession(null); setIsLoading(false); });
-          return;
+        supabase.auth.signOut().then(() => { setSession(null); setIsLoading(false); });
+        return;
       }
       setSession(session);
       setIsLoading(false);
@@ -153,12 +153,12 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [isSetup]);
 
-  useEffect(() => { 
+  useEffect(() => {
     if (session?.user) {
-        loadData().then(({ recurring: recs, transactions: txs }) => {
-            processDueRecurring(recs, txs);
-        });
-    } 
+      loadData().then(({ recurring: recs, transactions: txs }) => {
+        processDueRecurring(recs, txs);
+      });
+    }
   }, [session]);
 
   const loadData = async () => {
@@ -170,18 +170,18 @@ const App: React.FC = () => {
         fetchCategoryBudgets(uid), fetchValuations(uid), fetchCategories(uid), fetchGoals(uid), fetchRules(uid)
       ]);
       const sortedAccs = sortAccounts(accs || []);
-      setAccounts(sortedAccs); 
-      setTransactions(txs || []); 
+      setAccounts(sortedAccs);
+      setTransactions(txs || []);
       setRecurring(recs || []);
-      setCategories(cats || []); 
-      setCategoryBudgets(budgets || []); 
-      setValuations(vals || []); 
-      setGoals(gls || []); 
+      setCategories(cats || []);
+      setCategoryBudgets(budgets || []);
+      setValuations(vals || []);
+      setGoals(gls || []);
       setRules(rls || []);
       return { recurring: recs || [], transactions: txs || [] };
-    } catch (e: any) { 
-        console.error("Error loading data:", e); 
-        return { recurring: [], transactions: [] };
+    } catch (e: any) {
+      console.error("Error loading data:", e);
+      return { recurring: [], transactions: [] };
     }
   };
 
@@ -190,32 +190,32 @@ const App: React.FC = () => {
     if (!supabase || !session?.user) return;
     const uid = session.user.id;
     try {
-        await supabase.from('categories').update({ name: newName }).eq('name', oldName).eq('user_id', uid);
-        await supabase.from('transactions').update({ category: newName }).eq('category', oldName).eq('user_id', uid);
-        await supabase.from('recurring').update({ category: newName }).eq('category', oldName).eq('user_id', uid);
-        await supabase.from('category_budgets').update({ category_name: newName }).eq('category_name', oldName).eq('user_id', uid);
-        setCategories(prev => prev.map(c => c === oldName ? newName : c).sort());
-        setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: newName } : t));
-        setRecurring(prev => prev.map(r => r.category === oldName ? { ...r, category: newName } : r));
-        setCategoryBudgets(prev => prev.map(b => b.categoryName === oldName ? { ...b, categoryName: newName } : b));
+      await supabase.from('categories').update({ name: newName }).eq('name', oldName).eq('user_id', uid);
+      await supabase.from('transactions').update({ category: newName }).eq('category', oldName).eq('user_id', uid);
+      await supabase.from('recurring').update({ category: newName }).eq('category', oldName).eq('user_id', uid);
+      await supabase.from('category_budgets').update({ category_name: newName }).eq('category_name', oldName).eq('user_id', uid);
+      setCategories(prev => prev.map(c => c === oldName ? newName : c).sort());
+      setTransactions(prev => prev.map(t => t.category === oldName ? { ...t, category: newName } : t));
+      setRecurring(prev => prev.map(r => r.category === oldName ? { ...r, category: newName } : r));
+      setCategoryBudgets(prev => prev.map(b => b.categoryName === oldName ? { ...b, categoryName: newName } : b));
     } catch (e) { console.error("Rename failed:", e); }
   };
 
   const handleCreateCategory = async (name: string) => {
-      setCategories(prev => [...new Set([...prev, name])].sort());
-      try { await createCategory(name); } catch (e) { console.error(e); }
+    setCategories(prev => [...new Set([...prev, name])].sort());
+    try { await createCategory(name); } catch (e) { console.error(e); }
   };
 
   const handleDeleteCategory = async (name: string) => {
-      const supabase = initSupabase();
-      if (!supabase || !session?.user) return;
-      setCategories(prev => prev.filter(c => c !== name));
-      try { await supabase.from('categories').delete().eq('name', name).eq('user_id', session.user.id); } catch (e) { console.error(e); }
+    const supabase = initSupabase();
+    if (!supabase || !session?.user) return;
+    setCategories(prev => prev.filter(c => c !== name));
+    try { await supabase.from('categories').delete().eq('name', name).eq('user_id', session.user.id); } catch (e) { console.error(e); }
   };
 
   const handleLogout = async () => {
     const supabase = initSupabase();
-    if(supabase) await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
     setSession(null);
   };
 
@@ -223,11 +223,11 @@ const App: React.FC = () => {
   const handleDeleteAccount = async (id: string) => { if (accounts.length <= 1) return alert("Min 1 account required."); setAccounts(prev => prev.filter(a => a.id !== id)); try { await deleteAccountFromDb(id); } catch (e) { console.error(e); } };
   const handleSaveRule = async (r: TransactionRule) => { setRules(prev => prev.some(item => item.id === r.id) ? prev.map(item => item.id === r.id ? r : item) : [...prev, r]); try { await saveRule(r); } catch (e) { console.error(e); } };
   const handleDeleteRule = async (id: string) => { setRules(prev => prev.filter(r => r.id !== id)); try { await deleteRule(id); } catch (e) { console.error(e); } };
-  
-  const handleAddTransaction = async (newTx: Transaction, makeRec?: boolean) => { 
-    setTransactions(prev => [newTx, ...prev]); 
-    try { 
-      await createTransaction(newTx); 
+
+  const handleAddTransaction = async (newTx: Transaction, makeRec?: boolean) => {
+    setTransactions(prev => [newTx, ...prev]);
+    try {
+      await createTransaction(newTx);
       if (makeRec) {
         const r: RecurringTransaction = {
           id: crypto.randomUUID(),
@@ -246,7 +246,7 @@ const App: React.FC = () => {
         await createRecurring(r);
         setRecurring(prev => [...prev, r]);
       }
-    } catch (e) { console.error(e); } 
+    } catch (e) { console.error(e); }
   };
 
   const handleEditTransaction = async (tx: Transaction) => { setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t)); try { await createTransaction(tx); } catch (e) { console.error(e); } };
@@ -263,37 +263,37 @@ const App: React.FC = () => {
     const nextDue = parseISO(r.nextDueDate);
     const amount = getSmartAmount(r, nextDue, transactions);
     const newTx: Transaction = {
-        id: crypto.randomUUID(),
-        date: format(nextDue, 'yyyy-MM-dd'),
-        amount,
-        payee: r.payee,
-        category: r.category,
-        type: r.type,
-        accountId: r.accountId,
-        toAccountId: r.toAccountId,
-        isRecurring: true,
-        recurringId: r.id,
-        isReconciled: false
+      id: crypto.randomUUID(),
+      date: format(nextDue, 'yyyy-MM-dd'),
+      amount,
+      payee: r.payee,
+      category: r.category,
+      type: r.type,
+      accountId: r.accountId,
+      toAccountId: r.toAccountId,
+      isRecurring: true,
+      recurringId: r.id,
+      isReconciled: false
     };
 
     const newNextDue = calculateNextDate(nextDue, r.frequency, r.customInterval, r.customUnit);
     const updatedCount = (r.occurrencesProcessed || 0) + 1;
     const isNowActive = r.totalOccurrences ? (updatedCount < r.totalOccurrences) : true;
-    
+
     const updatedR: RecurringTransaction = {
-        ...r,
-        nextDueDate: format(newNextDue, 'yyyy-MM-dd'),
-        occurrencesProcessed: updatedCount,
-        isActive: isNowActive
+      ...r,
+      nextDueDate: format(newNextDue, 'yyyy-MM-dd'),
+      occurrencesProcessed: updatedCount,
+      isActive: isNowActive
     };
 
     try {
-        await createTransaction(newTx);
-        await createRecurring(updatedR);
-        setTransactions(prev => [newTx, ...prev]);
-        setRecurring(prev => prev.map(old => old.id === r.id ? updatedR : old));
+      await createTransaction(newTx);
+      await createRecurring(updatedR);
+      setTransactions(prev => [newTx, ...prev]);
+      setRecurring(prev => prev.map(old => old.id === r.id ? updatedR : old));
     } catch (e) {
-        alert("Failed to post transaction.");
+      alert("Failed to post transaction.");
     }
   };
 
@@ -320,17 +320,17 @@ const App: React.FC = () => {
       case 'dashboard': return <Dashboard {...commonProps} />;
       case 'transactions': return <TransactionList {...commonProps} categories={categories} onAddTransaction={handleAddTransaction} onEditTransaction={handleEditTransaction} onDeleteTransaction={handleDeleteTransaction} onAddCategory={handleCreateCategory} />;
       case 'recurring': return (
-        <RecurringManager 
-            {...commonProps} 
-            categories={categories} 
-            onAddRecurring={handleAddRecurring} 
-            onEditRecurring={handleEditRecurring} 
-            onDeleteRecurring={handleDeleteRecurring} 
-            onSaveCategoryBudget={saveCategoryBudget} 
-            onDeleteCategoryBudget={deleteCategoryBudget} 
-            onAddCategory={handleCreateCategory}
-            onManualProcess={() => processDueRecurring(recurring, transactions)}
-            onMoveSingle={handleMoveSingleRecurring}
+        <RecurringManager
+          {...commonProps}
+          categories={categories}
+          onAddRecurring={handleAddRecurring}
+          onEditRecurring={handleEditRecurring}
+          onDeleteRecurring={handleDeleteRecurring}
+          onSaveCategoryBudget={saveCategoryBudget}
+          onDeleteCategoryBudget={deleteCategoryBudget}
+          onAddCategory={handleCreateCategory}
+          onManualProcess={() => processDueRecurring(recurring, transactions)}
+          onMoveSingle={handleMoveSingleRecurring}
         />
       );
       case 'goals': return <GoalsManager goals={goals} accounts={sortedAccs} onSaveGoal={handleSaveGoal} onDeleteGoal={handleDeleteGoal} />;
@@ -357,13 +357,13 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <button onClick={() => setIsHelpOpen(true)} className="p-2 text-white/80 hover:text-white"><HelpCircle size={20} /></button>
             <div className="relative group">
-                <div className="flex items-center gap-2 cursor-pointer bg-orange-700 px-3 py-1.5 rounded-lg border border-orange-800 text-white text-sm font-medium">
-                  {selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : 'All Accounts'} <ChevronDown size={16} />
-                </div>
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                  <button onClick={() => setSelectedAccountId(null)} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b">All Accounts</button>
-                  {accounts.map(acc => ( <button key={acc.id} onClick={() => setSelectedAccountId(acc.id)} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50"> {acc.name} </button> ))}
-                </div>
+              <div className="flex items-center gap-2 cursor-pointer bg-orange-700 px-3 py-1.5 rounded-lg border border-orange-800 text-white text-sm font-medium">
+                {selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : 'All Accounts'} <ChevronDown size={16} />
+              </div>
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <button onClick={() => setSelectedAccountId(null)} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b">All Accounts</button>
+                {accounts.map(acc => (<button key={acc.id} onClick={() => setSelectedAccountId(acc.id)} className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50"> {acc.name} </button>))}
+              </div>
             </div>
             <button onClick={handleLogout} className="text-white/80 hover:text-white"><LogOut size={18} /></button>
           </div>
@@ -375,9 +375,9 @@ const App: React.FC = () => {
       <HelpPanel activeTab={activeTab} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       {isRestoring && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center text-white gap-4">
-            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-xl font-black uppercase tracking-widest">Restoring...</div>
-            <p className="text-slate-200 text-sm font-black animate-pulse">{restorationProgress}</p>
+          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-xl font-black uppercase tracking-widest">Restoring...</div>
+          <p className="text-slate-200 text-sm font-black animate-pulse">{restorationProgress}</p>
         </div>
       )}
     </div>
