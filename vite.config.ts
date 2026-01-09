@@ -7,11 +7,25 @@ import path from 'node:path';
 
 // Manual .env parser fallback
 function getManualEnv(cwd: string) {
-  const envPath = path.join(cwd, '.env');
+  const envPath = path.resolve(cwd, '.env');
   const env: Record<string, string> = {};
 
+  console.error("--- VERCEL BUILD DIAGNOSTICS ---");
+  console.error("CWD:", cwd);
+  console.error("Target .env path:", envPath);
+
+  try {
+    const files = fs.readdirSync(cwd);
+    console.error("Files in root:", files.join(', '));
+  } catch (e) {
+    console.error("Failed to list files:", e);
+  }
+
   if (fs.existsSync(envPath)) {
+    console.error(".env file EXISTS according to fs.existsSync");
     try {
+      const stats = fs.statSync(envPath);
+      console.error(".env file size:", stats.size, "bytes");
       const content = fs.readFileSync(envPath, 'utf-8');
       content.split(/\r?\n/).forEach(line => {
         const trimmedLine = line.trim();
@@ -22,19 +36,14 @@ function getManualEnv(cwd: string) {
           }
         }
       });
-      console.warn("Manual .env Load: Success (Found " + Object.keys(env).length + " keys)");
+      console.error("Manual .env Load: SUCCESS. Found keys:", Object.keys(env).join(', '));
     } catch (e) {
-      console.warn("Manual .env Load: Failed to read file", e);
+      console.error("Manual .env Load: FAILED to read", e);
     }
   } else {
-    console.warn("Manual .env Load: .env file not found at " + envPath);
-    try {
-      const files = fs.readdirSync(cwd);
-      console.warn("Root Directory Contents:", files.join(', '));
-    } catch (e) {
-      console.warn("Failed to list directory contents", e);
-    }
+    console.error(".env file DOES NOT EXIST at " + envPath);
   }
+  console.error("--------------------------------");
   return env;
 }
 
