@@ -442,6 +442,12 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
                     <td className="p-3">
                       <div className="font-bold text-xs text-gray-900 leading-tight">{getPayeeName(r)}</div>
                       {r.notes && <div className="text-[9px] text-gray-400 italic truncate max-w-[200px]">{r.notes}</div>}
+                      {r.totalOccurrences && (
+                        <div className="text-[9px] font-black text-brand-600 uppercase mt-1 flex items-center gap-1">
+                          <RotateCcw size={10} />
+                          {r.occurrencesProcessed || 0} / {r.totalOccurrences} installments
+                        </div>
+                      )}
                     </td>
                     <td className="p-3">
                       <span className="px-1.5 py-0.5 bg-gray-50 border rounded text-[9px] font-black text-gray-500 uppercase">{r.category}</span>

@@ -1,89 +1,78 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const CONFIG_KEY = 'financeflow_supabase_config';
-
 // Detect environment variables from Vite or process.env (Vercel)
-// We use simple assignments so Vite's 'define' replacement works most reliably
-// We also check for explicit global constants injected by vite.config.ts
-const VITE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const VITE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const RAW_URL = (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "") || "";
-const RAW_KEY = (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "") || "";
-
-// __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ are replaced at build-time by Vite
-const GLOBAL_URL = typeof __SUPABASE_URL__ !== 'undefined' ? __SUPABASE_URL__ : "";
-const GLOBAL_KEY = typeof __SUPABASE_ANON_KEY__ !== 'undefined' ? __SUPABASE_ANON_KEY__ : "";
-
-const ENV_URL = GLOBAL_URL || VITE_URL || RAW_URL;
-const ENV_KEY = GLOBAL_KEY || VITE_KEY || RAW_KEY;
+const ENV_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : "") || (typeof process !== 'undefined' ? process.env.SUPABASE_URL : "");
+const ENV_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : "") || (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : "");
 
 /**
  * Returns true if the environment variables are already set (e.g. on Vercel or local .env)
  */
 export const isPreconfigured = () => {
-    return !!(ENV_URL && (ENV_URL !== "your_supabase_url") && ENV_KEY && (ENV_KEY !== "your_supabase_anon_key"));
+    return !!ENV_URL && !!ENV_KEY;
 };
 
+/**
+ * Loads configuration from Local Storage or Environment
+ */
 export const getSupabaseConfig = () => {
-    // If we have environment variables, they take absolute priority
+    // 1. Priority: Environment Variables (Vercel/Local .env)
     if (isPreconfigured()) {
-        return { url: ENV_URL, key: ENV_KEY };
+        return {
+            url: ENV_URL,
+            key: ENV_KEY
+        };
     }
 
-    // Otherwise, check local storage (for AI Studio/Local development)
-    const stored = localStorage.getItem(CONFIG_KEY);
-    if (!stored) {
-        return { url: "", key: "" };
-    }
-    return JSON.parse(stored);
+    // 2. Fallback: Local Storage
+    const url = localStorage.getItem('supabase_url');
+    const key = localStorage.getItem('supabase_key');
+    return { url, key };
 };
 
-export const saveSupabaseConfig = (config: { url: string; key: string }) => {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-};
-
+/**
+ * Check if client is actually configured
+ */
 export const isConfigured = () => {
-    const config = getSupabaseConfig();
-    return !!(config.url && config.key);
+    const { url, key } = getSupabaseConfig();
+    return !!url && !!key;
+};
+
+const { url: finalUrl, key: finalKey } = getSupabaseConfig();
+export const supabase = createClient(finalUrl || 'https://placeholder.supabase.co', finalKey || 'placeholder');
+
+/**
+ * Helper to get/init the singleton client (used by App.tsx and Auth.tsx)
+ */
+export const initSupabase = () => {
+    const { url, key } = getSupabaseConfig();
+    if (!url || !key) return null;
+    return supabase; // Return the singleton
+};
+
+/**
+ * Legacy support/Manual config save
+ */
+export const saveSupabaseConfig = (config: { url: string; key: string }) => {
+    localStorage.setItem('supabase_url', config.url);
+    localStorage.setItem('supabase_key', config.key);
+};
+
+export const resetSupabase = () => {
+    localStorage.removeItem('supabase_url');
+    localStorage.removeItem('supabase_key');
+    window.location.reload();
 };
 
 export const getDebugInfo = () => {
     const config = getSupabaseConfig();
     return {
-        hasUrl: !!config.url,
-        hasKey: !!config.key,
         urlValue: config.url || 'NONE',
-        keyPreview: config.url && config.key ? `${config.key.substring(0, 10)}...` : 'NONE',
-        source: isPreconfigured() ? 'Environment (Vercel)' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED'),
+        keyPreview: (config.url && config.key) ? `${config.key.substring(0, 10)}...` : 'NONE',
+        source: isPreconfigured() ? 'Environment' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED'),
         envVariables: {
-            BUILD_INJECT_URL: !!GLOBAL_URL,
-            BUILD_INJECT_KEY: !!GLOBAL_KEY,
-            VITE_URL: !!VITE_URL,
-            VITE_KEY: !!VITE_KEY,
-            RAW_URL: !!RAW_URL,
-            RAW_KEY: !!RAW_KEY
+            VITE_SUPABASE_URL: !!(typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL),
+            SUPABASE_URL: !!(typeof process !== 'undefined' && process.env.SUPABASE_URL)
         }
     };
-};
-
-let supabaseInstance: any = null;
-
-export const initSupabase = () => {
-    if (supabaseInstance) return supabaseInstance;
-    const { url, key } = getSupabaseConfig();
-    if (!url || !key) return null;
-
-    try {
-        supabaseInstance = createClient(url, key);
-        return supabaseInstance;
-    } catch (e) {
-        console.error("Supabase Initialization Error:", e);
-        return null;
-    }
-};
-
-export const resetSupabase = () => {
-    supabaseInstance = null;
-    localStorage.removeItem(CONFIG_KEY);
 };

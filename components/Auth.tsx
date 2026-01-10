@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { initSupabase, saveSupabaseConfig, isConfigured, resetSupabase, isPreconfigured, getDebugInfo } from '../services/supabaseClient';
-import { Settings, LogIn, UserPlus, AlertCircle, CheckCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { initSupabase, isConfigured } from '../services/supabaseClient';
+import { AlertCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft, LogIn } from 'lucide-react';
 
 interface AuthProps {
     onConfigured: () => void;
@@ -11,14 +11,7 @@ interface AuthProps {
 const EMAILS_STORAGE_KEY = 'financeflow_remembered_emails';
 
 export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
-    const configured = isConfigured();
-    const preconfigured = isPreconfigured();
-    const debug = getDebugInfo();
-
-    // If preconfigured (Vercel), we never start in 'config' mode.
-    // Otherwise (AI Studio), if not configured, start in 'config' mode.
     const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
-
     const [rememberedEmails, setRememberedEmails] = useState<string[]>([]);
 
     // Auth Form State
@@ -28,12 +21,6 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [configSuccess, setConfigSuccess] = useState(false);
-    const [showDebug, setShowDebug] = useState(false);
-
-    // Config Form State
-    const [supabaseUrl, setSupabaseUrl] = useState('');
-    const [supabaseKey, setSupabaseKey] = useState('');
 
     useEffect(() => {
         const stored = localStorage.getItem(EMAILS_STORAGE_KEY);
@@ -46,39 +33,22 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
         setRememberedEmails(updated);
     };
 
-    const handleConfigSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-        try {
-            const cleanUrl = supabaseUrl.trim().replace(/\/$/, "");
-            const cleanKey = supabaseKey.trim();
-
-            const config = { url: cleanUrl, key: cleanKey };
-            if (!config.url || !config.key) throw new Error("Missing required configuration fields.");
-
-            resetSupabase();
-            saveSupabaseConfig(config);
-
-            const testClient = initSupabase();
-            if (!testClient) throw new Error("Supabase initialization failed.");
-
-            setConfigSuccess(true); setLoading(false);
-            onConfigured();
-            setTimeout(() => { setMode('login'); setConfigSuccess(false); }, 1500);
-        } catch (err: any) {
-            setError(err.message || "Failed to save configuration.");
-            setLoading(false);
-        }
-    };
-
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null); setSuccessMsg(null); setLoading(true);
         const supabase = initSupabase();
-        if (!supabase) { setError("Connection not configured properly. Check environment variables."); setLoading(false); return; }
+        if (!supabase) {
+            setError("Connection not configured properly. Check environment variables.");
+            setLoading(false);
+            return;
+        }
+
         const cleanEmail = email.trim();
-        if (!cleanEmail || !password) { setError("Email and password required."); setLoading(false); return; }
+        if (!cleanEmail || !password) {
+            setError("Email and password required.");
+            setLoading(false);
+            return;
+        }
 
         try {
             if (mode === 'login') {
@@ -119,11 +89,9 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                 <div className="bg-white border-b border-gray-100 p-2 flex">
                     <button onClick={() => setMode('login')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'login' || mode === 'reset' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Sign In</button>
                     <button onClick={() => setMode('register')} disabled={loading} className={`flex-1 py-3 text-sm font-bold transition-colors ${mode === 'register' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Register</button>
-
                 </div>
 
                 <div className="p-8">
-
                     <div className="text-center mb-8">
                         <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
                             {mode === 'reset' ? <KeyRound size={32} /> : <Database size={32} />}
@@ -133,20 +101,18 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                         </h2>
                     </div>
 
-                    {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-red-100 flex-col"><div className="flex items-start gap-2"><AlertCircle size={16} className="mt-0.5 shrink-0" /><span>{error}</span></div><button onClick={() => setShowDebug(!showDebug)} className="text-[10px] font-bold uppercase tracking-wider text-red-400 hover:text-red-500 mt-1 ml-6">Debug Info</button></div>}
-                    {showDebug && (
-                        <div className="bg-gray-900 text-green-400 p-4 rounded-lg text-[10px] font-mono mb-6 overflow-auto max-h-40 border border-gray-800 shadow-inner">
-                            <div className="flex justify-between border-b border-gray-800 pb-1 mb-1"><span>SOURCE:</span> <span>{debug.source}</span></div>
-                            <div className="flex justify-between"><span>DETECTED URL:</span> <span className="text-gray-400">{debug.urlValue}</span></div>
-                            <div className="flex justify-between"><span>KEY PREVIEW:</span> <span className="text-gray-400">{debug.keyPreview}</span></div>
-                            <div className="mt-2 text-gray-500 border-t border-gray-800 pt-1">DETECTION FLAGS:</div>
-                            {Object.entries(debug.envVariables).map(([k, v]) => (
-                                <div key={k} className="flex justify-between"><span>{k}:</span> <span className={v ? 'text-green-500' : 'text-red-500'}>{v ? 'FOUND' : 'MISSING'}</span></div>
-                            ))}
+                    {error && (
+                        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-red-100 font-medium">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            <span>{error}</span>
                         </div>
                     )}
-                    {successMsg && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-green-200"><Mail size={16} className="mt-0.5 shrink-0" /><span>{successMsg}</span></div>}
-                    {configSuccess && <div className="bg-green-50 text-green-700 p-4 rounded-lg text-sm mb-6 flex items-center gap-2 justify-center border border-green-200 font-bold"><CheckCircle size={18} /><span>Connected!</span></div>}
+                    {successMsg && (
+                        <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-green-200">
+                            <Mail size={16} className="mt-0.5 shrink-0" />
+                            <span>{successMsg}</span>
+                        </div>
+                    )}
 
                     {mode === 'reset' ? (
                         <div className="space-y-4">
