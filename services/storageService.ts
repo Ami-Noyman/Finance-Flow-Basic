@@ -50,7 +50,7 @@ export const testConnection = async (): Promise<{ success: boolean; message: str
     }
 };
 
-async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, mapper: (row: any) => T, tableName: string): Promise<T[]> {
+async function safeFetch<T>(query: any, mapper: (row: any) => T, tableName: string): Promise<T[]> {
     try {
         const result = await query;
         if (result.error) {
@@ -58,7 +58,7 @@ async function safeFetch<T>(query: Promise<{ data: any[] | null; error: any }>, 
             const isSchemaError = ['42P01', 'PGRST204', 'PGRST205'].includes(error.code);
             if (isSchemaError) {
                 console.warn(`Supabase: Table '${tableName}' is not yet initialized in the DB. Returning empty array.`);
-                return []; 
+                return [];
             }
             throw error;
         }
@@ -124,7 +124,7 @@ const accountToDb = (a: Account, userId: string) => {
         color: a.color,
         initial_balance: a.initialBalance,
     };
-    
+
     if (a.owner !== undefined) payload.owner = a.owner;
     if (a.subType !== undefined) payload.sub_type = a.subType;
     if (a.creditLimit !== undefined) payload.credit_limit = a.creditLimit;
@@ -134,7 +134,7 @@ const accountToDb = (a: Account, userId: string) => {
     if (a.estimatedPension !== undefined) payload.estimated_pension = a.estimatedPension;
     if (a.interestRate !== undefined) payload.interest_rate = a.interestRate;
     if (a.termMonths !== undefined) payload.term_months = a.termMonths;
-    
+
     return payload;
 };
 
@@ -270,26 +270,26 @@ const valuationToDb = (v: Valuation, userId: string) => ({
 });
 
 const mapGoal = (row: any): FinancialGoal => ({
-  id: row.id,
-  name: row.name,
-  targetAmount: Number(row.target_amount),
-  currentAmount: Number(row.current_amount),
-  deadline: row.deadline,
-  color: row.color,
-  accountId: row.account_id,
-  isActive: row.is_active,
+    id: row.id,
+    name: row.name,
+    targetAmount: Number(row.target_amount),
+    currentAmount: Number(row.current_amount),
+    deadline: row.deadline,
+    color: row.color,
+    accountId: row.account_id,
+    isActive: row.is_active,
 });
 
 const goalToDb = (g: FinancialGoal, userId: string) => ({
-  id: g.id,
-  user_id: userId,
-  name: g.name,
-  target_amount: g.targetAmount,
-  current_amount: g.currentAmount,
-  deadline: g.deadline || null,
-  color: g.color,
-  account_id: g.accountId || null,
-  is_active: g.isActive,
+    id: g.id,
+    user_id: userId,
+    name: g.name,
+    target_amount: g.targetAmount,
+    current_amount: g.currentAmount,
+    deadline: g.deadline || null,
+    color: g.color,
+    account_id: g.accountId || null,
+    is_active: g.isActive,
 });
 
 export const fetchAccounts = async (uid?: string): Promise<Account[]> => {
@@ -451,14 +451,14 @@ export const batchCreateCategories = async (names: string[]) => {
 
 export const fetchAccountSubTypes = async (uid?: string): Promise<string[]> => {
     const defaults = [
-        'קרן השתלמות', 
-        'קופת גמל', 
-        'קופת גמל להשקעה', 
+        'קרן השתלמות',
+        'קופת גמל',
+        'קופת גמל להשקעה',
         'קרן פנסיה',
         'ביטוח מנהלים',
-        'קרנות כספיות', 
-        'פוליסת חיסכון', 
-        'תיק מנוהל', 
+        'קרנות כספיות',
+        'פוליסת חיסכון',
+        'תיק מנוהל',
         'חשבון השקעות',
         'נדל״ן להשקעה',
         'קריפטו'
@@ -580,6 +580,6 @@ export const clearAllUserData = async () => {
             if (error && !(['42P01', 'PGRST204', 'PGRST205'].includes(error.code))) {
                 console.warn(`Purge failed for table ${table}:`, error.message);
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 };

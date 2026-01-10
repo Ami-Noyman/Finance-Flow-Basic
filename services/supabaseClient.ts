@@ -69,6 +69,8 @@ export const getDebugInfo = () => {
     return {
         urlValue: config.url || 'NONE',
         keyPreview: (config.url && config.key) ? `${config.key.substring(0, 10)}...` : 'NONE',
+        hasUrl: !!config.url,
+        hasKey: !!config.key,
         source: isPreconfigured() ? 'Environment' : (isConfigured() ? 'Local Storage' : 'NOT CONFIGURED'),
         envVariables: {
             VITE_SUPABASE_URL: !!(typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL),
