@@ -27,58 +27,54 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V15 PROTOCOL DEEP DIVE: Isolate Auth Methods & API Versions
+    // V16 ULTIMATE MAPPING: Exhaustive model discovery
     const results: any = {
+      listResults: null,
       probes: {}
     }
 
-    const testPrompt = { contents: [{ role: 'user', parts: [{ text: "ping" }] }] }
-
-    // Variant 1: Query Param ONLY (Standard for many examples)
+    // 1. Get ALL models with their supported methods
     try {
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testPrompt)
-      })
-      results.probes["query-v1beta-flash"] = { status: resp.status, body: await resp.json() }
-    } catch (e: any) { results.probes["query-v1beta-flash"] = { error: e.message } }
+        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+        const listData = await listResp.json()
+        results.listResults = listData.models || []
+        
+        // 2. Select the top candidates from the list
+        const candidates = (listData.models || [])
+            .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+            .map((m: any) => m.name.split("/").pop())
+            .slice(0, 5) // Test top 5
 
-    // Variant 2: Header x-goog-api-key ONLY
-    try {
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(testPrompt)
-      })
-      results.probes["header-v1beta-flash"] = { status: resp.status, body: await resp.json() }
-    } catch (e: any) { results.probes["header-v1beta-flash"] = { error: e.message } }
+        const testPrompt = { contents: [{ role: 'user', parts: [{ text: "ping" }] }] }
 
-    // Variant 3: Stable v1 + Query Param
-    try {
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testPrompt)
-      })
-      results.probes["query-v1-flash"] = { status: resp.status, body: await resp.json() }
-    } catch (e: any) { results.probes["query-v1-flash"] = { error: e.message } }
-
-    // Variant 4: Try 8b-flash (sometimes available when flash isn't)
-    try {
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testPrompt)
-      })
-      results.probes["query-v1beta-8b"] = { status: resp.status, body: await resp.json() }
-    } catch (e: any) { results.probes["query-v1beta-8b"] = { error: e.message } }
+        for (const modelId of candidates) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testPrompt)
+                })
+                const data = await resp.json()
+                results.probes[modelId] = { status: resp.status, ok: resp.ok }
+                if (resp.ok) {
+                    results.successModel = modelId
+                    results.successData = data
+                    break; // stop at first success
+                }
+            } catch (e: any) {
+                results.probes[modelId] = { error: e.message }
+            }
+        }
+    } catch (e: any) {
+        results.listError = e.message
+    }
 
     return new Response(
       JSON.stringify({ 
-        text: "PROTOCOL_DEEP_DIVE_V15_COMPLETE", 
-        deploy: "V15", 
-        results: results 
+        text: results.successData?.candidates?.[0]?.content?.parts?.[0]?.text || "MAPPING_COMPLETE", 
+        deploy: "V16", 
+        mapping: results 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -87,9 +83,9 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V15 Error:", error.message)
+    console.error("[Edge Function] V16 Error:", error.message)
     return new Response(
-      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V15" }),
+      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V16" }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }

@@ -17,7 +17,7 @@ import {
   fetchGoals, saveGoal, deleteGoal, batchCreateGoals, fetchRules, saveRule, deleteRule
 } from './services/storageService';
 import { initSupabase, isConfigured } from './services/supabaseClient';
-import { ChevronDown, PiggyBank, ShieldCheck, LogOut, HelpCircle, Loader, CreditCard, Target, TrendingUp } from 'lucide-react';
+import { ChevronDown, PiggyBank, ShieldCheck, LogOut, HelpCircle, Loader, CreditCard, Target, TrendingUp, RefreshCw, Zap } from 'lucide-react';
 import { calculateNextDate, getSmartAmount, sortAccounts } from './utils/finance';
 import { parseISO, format, startOfDay, isBefore, isSameDay } from 'date-fns';
 import { Chat } from "@google/genai";
@@ -403,7 +403,15 @@ const App: React.FC = () => {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-orange-600 border-b border-orange-700 px-6 py-3 flex justify-between items-center shadow-sm z-10">
-          <h1 className="text-xl font-bold text-white capitalize">{activeTab}</h1>
+          <h1 className="text-xl font-bold text-white capitalize flex items-center gap-2">
+            {activeTab}
+            {isDataLoading && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-white/20 rounded text-[10px] font-black uppercase tracking-widest animate-pulse">
+                <RefreshCw size={10} className="animate-spin" />
+                Syncing
+              </span>
+            )}
+          </h1>
           <div className="flex items-center gap-3">
             <button onClick={() => setIsHelpOpen(true)} className="p-2 text-white/80 hover:text-white"><HelpCircle size={20} /></button>
             <div className="relative group">
@@ -428,20 +436,6 @@ const App: React.FC = () => {
           <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           <div className="text-xl font-black uppercase tracking-widest">Restoring...</div>
           <p className="text-slate-200 text-sm font-black animate-pulse">{restorationProgress}</p>
-        </div>
-      )}
-      {isDataLoading && (
-        <div className="fixed inset-0 z-[90] bg-white/50 backdrop-blur-[1px] cursor-wait flex flex-col items-center justify-center gap-4 text-center">
-          <div className="bg-white/80 px-4 py-2 rounded-full shadow-lg border border-orange-100 flex items-center gap-2 text-orange-600 text-sm font-medium animate-pulse">
-            <Loader size={16} className="animate-spin" />
-            Syncing your flow...
-          </div>
-          <button
-            onClick={() => setIsDataLoading(false)}
-            className="mt-2 px-3 py-1 bg-white border border-gray-200 rounded-lg text-[10px] text-gray-400 font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all pointer-events-auto shadow-sm"
-          >
-            Emergency Unlock
-          </button>
         </div>
       )}
     </div>
