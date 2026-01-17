@@ -42,11 +42,11 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
 
         if (data?.deploy) {
             console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
-            if (data.model) {
-                console.log(`[AI Service] Successful Model: ${data.model}`);
-            }
             if (data.diagnostics) {
-                console.log(`[AI Service] V11 Diagnostics:`, data.diagnostics);
+                const diag = data.diagnostics;
+                console.log(`[AI Service] V11 Probe Succeeded: ${!!diag.rawFlashProbe?.candidates}`);
+                console.log(`[AI Service] Available Models (truncated):`, diag.detectedModels?.slice(0, 5));
+                if (diag.errorLog?.length) console.warn(`[AI Service] Probe Warnings:`, diag.errorLog);
             }
         }
 
