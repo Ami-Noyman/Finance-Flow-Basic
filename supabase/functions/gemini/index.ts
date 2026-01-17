@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 // Use v1beta because system_instruction is not yet stable in v1 REST endpoint
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+// Use -latest version because v1beta is picky about the alias mapping
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
