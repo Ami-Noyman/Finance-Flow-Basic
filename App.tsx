@@ -187,10 +187,19 @@ const App: React.FC = () => {
       loadedUserIdRef.current = session.user.id;
       setIsDataLoading(true);
 
+      // SAFETY TIMEOUT for Interaction Guard
+      const syncTimer = setTimeout(() => {
+        setIsDataLoading(prev => {
+          if (prev) console.warn("[App] Interaction Guard: Force-closing due to sync timeout.");
+          return false;
+        });
+      }, 15000);
+
       loadData().then(({ recurring: recs, transactions: txs }) => {
         console.log("[App] Data loaded, triggering recurring check...");
         processDueRecurring(recs, txs).finally(() => {
           console.log("[App] Interaction Guard: Data fully hydrated.");
+          clearTimeout(syncTimer);
           setIsDataLoading(false);
         });
       });

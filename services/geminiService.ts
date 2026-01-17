@@ -42,8 +42,8 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
 
         if (data?.deploy) {
             console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
-            if (data.probes) {
-                console.log(`[AI Service] V13 Exhaustive Probes:`, data.probes);
+            if (data.discovery) {
+                console.log(`[AI Service] V14 Discovery Data:`, data.discovery);
             }
         }
 

@@ -27,46 +27,54 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V13 EXHAUSTIVE NAKED PROBE
-    // We probe multiple variants to see which one works (if any) and WHY
-    const results: any = {}
-    
-    const probes = [
-      { id: "v1beta-flash", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}` },
-      { id: "v1beta-flash-8b", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}` },
-      { id: "v1-flash", url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}` },
-      { id: "v1-pro", url: `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}` }
-    ]
-
-    const probePayload = {
-      contents: [{ role: 'user', parts: [{ text: "echo: probe" }] }]
+    // V14 DISCOVERY PROXY: Exhaustive testing with listModels output
+    const results: any = {
+      listModels: [],
+      probes: {}
     }
 
-    for (const p of probes) {
+    // 1. Get the real list of models again
+    try {
+        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+        const listData = await listResp.json()
+        results.listModels = listData.models || []
+    } catch (e: any) {
+        results.listModelsError = e.message
+    }
+
+    // 2. Probes with diverse configurations
+    const probeConfigs = [
+      { id: "v1beta-flash", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent` },
+      { id: "v1beta-flash-latest", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent` },
+      { id: "v1-flash", url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent` },
+      { id: "v1-pro", url: `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent` }
+    ]
+
+    const probePayload = { contents: [{ role: 'user', parts: [{ text: "echo: probe" }] }] }
+
+    for (const config of probeConfigs) {
       try {
-        console.log(`[V13] Probing ${p.id}...`)
-        const resp = await fetch(p.url, {
+        const urlWithKey = `${config.url}?key=${apiKey}`
+        const resp = await fetch(urlWithKey, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey // Try both query param and header
+          },
           body: JSON.stringify(probePayload)
         })
         const data = await resp.json()
-        results[p.id] = { status: resp.status, body: data }
-        if (resp.status === 200) {
-            console.log(`[V13] SUCCESS with ${p.id}`)
-        } else {
-            console.error(`[V13] FAILED ${p.id}: ${resp.status}`)
-        }
+        results.probes[config.id] = { status: resp.status, body: data }
       } catch (e: any) {
-        results[p.id] = { error: e.message }
+        results.probes[config.id] = { error: e.message }
       }
     }
 
     return new Response(
       JSON.stringify({ 
-        text: "EXHAUSTIVE_PROBE_COMPLETE", 
-        deploy: "V13", 
-        probes: results 
+        text: "DISCOVERY_PROBE_V14_COMPLETE", 
+        deploy: "V14", 
+        discovery: results 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -75,19 +83,10 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V13 Final Error:", error.message)
-    
+    console.error("[Edge Function] V14 Error:", error.message)
     return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        details: error.stack,
-        isAIFailure: true,
-        deploy: "V13"
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
+      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V14" }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
 })
