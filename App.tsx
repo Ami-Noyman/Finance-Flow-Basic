@@ -51,7 +51,6 @@ const App: React.FC = () => {
   const processDueRecurring = async (currentRecurring: RecurringTransaction[], currentTransactions: Transaction[]) => {
     if (!currentRecurring.length || !session?.user) return;
 
-    console.log(`[Recurring Engine] Checking ${currentRecurring.length} items...`);
     const today = startOfDay(new Date());
     const newTransactions: Transaction[] = [];
     const updatedRecurring: RecurringTransaction[] = [];
@@ -60,24 +59,20 @@ const App: React.FC = () => {
 
     for (let r of workingRecurring) {
       if (!r.isActive) {
-        console.log(`[Recurring Engine] Skipping ${r.payee} - INACTIVE`);
         continue;
       }
 
       let nextDue = parseISO(r.nextDueDate);
-      console.log(`[Recurring Engine] Rule: ${r.payee} | Next Due: ${r.nextDueDate} | Today: ${format(today, 'yyyy-MM-dd')}`);
 
       let processedCount = r.occurrencesProcessed || 0;
       let hasPostedForThisRule = false;
 
       while (isBefore(nextDue, today) || isSameDay(nextDue, today)) {
         if (r.totalOccurrences && processedCount >= r.totalOccurrences) {
-          console.log(`[Recurring Engine] Skipping ${r.payee} - reached limit.`);
           r.isActive = false;
           break;
         }
 
-        console.log(`[Recurring Engine] Processing due item: ${r.payee} for ${r.nextDueDate}`);
         const amount = getSmartAmount(r, nextDue, currentTransactions);
         const newTx: Transaction = {
           id: crypto.randomUUID(),
@@ -114,7 +109,6 @@ const App: React.FC = () => {
     }
 
     if (newTransactions.length > 0) {
-      console.log(`[Recurring Engine] Posting ${newTransactions.length} transactions and updating rules...`);
       try {
         await batchCreateTransactions(newTransactions);
         for (const rec of updatedRecurring) {
@@ -126,12 +120,9 @@ const App: React.FC = () => {
           const found = updatedRecurring.find(u => u.id === old.id);
           return found ? found : old;
         }));
-        console.log(`[Recurring Engine] DONE. Posted: ${newTransactions.map(t => t.payee).join(', ')}`);
       } catch (e) {
         console.error("[Recurring Engine] ERROR:", e);
       }
-    } else {
-      console.log(`[Recurring Engine] No items due today.`);
     }
   };
 

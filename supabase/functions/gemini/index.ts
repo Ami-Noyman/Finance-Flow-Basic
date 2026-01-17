@@ -30,28 +30,35 @@ serve(async (req) => {
     // Initialize the SDK
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    // STABLE VERSION: Explicitly force v1 to avoid implicit v1beta conversion
+    // STABLE VERSION: Explicitly force v1
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      systemInstruction: systemInstruction,
       generationConfig: generationConfig
     }, { apiVersion: 'v1' })
 
-    console.log(`[Edge Function] [Deploy V7] Calling Gemini model: gemini-1.5-flash (v1)`);
+    console.log(`[Edge Function] [Deploy V8] Calling Gemini model: gemini-1.5-flash (v1)`);
 
-    // CRITICAL: We MUST wrap the array in an object with a 'contents' field,
-    // otherwise the SDK treats the array elements as 'Part' objects instead of 'Content' objects,
-    // which causes the 'Unknown name "role"' error.
-    const request = contents 
-      ? { contents } 
-      : { contents: [{ role: 'user', parts: [{ text: prompt }] }] }
+    // FOR STABLE API COMPATIBILITY:
+    // If systemInstruction is provided, we prepend it as a 'user' message 
+    // since the v1 endpoint often rejects the 'systemInstruction' field in the JSON payload.
+    let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
+    
+    if (systemInstruction) {
+      finalContents = [
+        { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}\n\nPlease follow the above instruction strictly for all subsequent messages.` }] },
+        { role: 'model', parts: [{ text: "Understood. I will follow those instructions." }] },
+        ...finalContents
+      ];
+    }
+
+    const request = { contents: finalContents };
 
     const result = await model.generateContent(request)
     const response = await result.response
     const text = response.text()
 
     return new Response(
-      JSON.stringify({ text }),
+      JSON.stringify({ text, deploy: "V8" }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 

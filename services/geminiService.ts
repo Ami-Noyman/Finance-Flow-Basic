@@ -51,6 +51,10 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             throw new Error(`Gemini Error: ${typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))}`);
         }
 
+        if (data?.deploy) {
+            console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
+        }
+
         // The Edge Function now returns { text } directly
         const text = data?.text;
         if (!text) {
