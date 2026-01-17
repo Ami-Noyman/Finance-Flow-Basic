@@ -142,6 +142,7 @@ const App: React.FC = () => {
     if (!supabase) { setIsLoading(false); return; }
 
     supabase.auth.getSession().then(({ data: { session }, error }: any) => {
+      console.log("[App] Initial getSession result:", session?.user?.email || "No session");
       if (error) {
         supabase.auth.signOut().then(() => { setSession(null); setIsLoading(false); });
         return;
@@ -150,7 +151,8 @@ const App: React.FC = () => {
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[App] onAuthStateChange event:", event, "Session present:", !!session);
       setSession(session);
     });
     return () => subscription.unsubscribe();
@@ -158,7 +160,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (session?.user) {
+      console.log("[App] Session updated, triggering loadData for:", session.user.email);
       loadData().then(({ recurring: recs, transactions: txs }) => {
+        console.log("[App] Data loaded, triggering recurring check...");
         processDueRecurring(recs, txs);
       });
     }
@@ -166,12 +170,14 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     if (!session?.user) return { recurring: [], transactions: [] };
+    console.log("[App] loadData: Starting Promise.all fetches...");
     try {
       const uid = session.user.id;
       const [accs, txs, recs, budgets, vals, cats, gls, rls] = await Promise.all([
         fetchAccounts(uid), fetchTransactions(uid), fetchRecurring(uid),
         fetchCategoryBudgets(uid), fetchValuations(uid), fetchCategories(uid), fetchGoals(uid), fetchRules(uid)
       ]);
+      console.log("[App] loadData: All fetches completed. Processing results...");
       const sortedAccs = sortAccounts(accs || []);
       setAccounts(sortedAccs);
       setTransactions(txs || []);
@@ -181,9 +187,10 @@ const App: React.FC = () => {
       setValuations(vals || []);
       setGoals(gls || []);
       setRules(rls || []);
+      console.log("[App] loadData: State updates triggered.");
       return { recurring: recs || [], transactions: txs || [] };
     } catch (e: any) {
-      console.error("Error loading data:", e);
+      console.error("[App] loadData ERROR:", e);
       return { recurring: [], transactions: [] };
     }
   };

@@ -42,6 +42,9 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
 
         if (data?.deploy) {
             console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
+            if (data.model) {
+                console.log(`[AI Service] Successful Model: ${data.model}`);
+            }
         }
 
         // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)
@@ -55,9 +58,6 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             throw new Error(`Gemini Error: ${typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))}`);
         }
 
-        if (data?.deploy) {
-            console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
-        }
 
         // The Edge Function now returns { text } directly
         const text = data?.text;

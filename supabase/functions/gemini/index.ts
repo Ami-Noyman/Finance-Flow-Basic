@@ -27,38 +27,58 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // Initialize the SDK
-    const genAI = new GoogleGenerativeAI(apiKey)
-    
-    // STABLE VERSION: Try the -latest alias which is often more reliable
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash-latest",
-      generationConfig: generationConfig
-    })
+    // V10 DIAGNOSTIC FAILOVER: Try multiple models until one works
+    const modelsToTry = [
+      { name: "gemini-1.5-flash", apiVersion: "v1" },
+      { name: "gemini-1.5-flash-latest", apiVersion: "v1beta" },
+      { name: "gemini-1.5-pro", apiVersion: "v1" },
+      { name: "gemini-pro", apiVersion: "v1" } // 1.0 Pro
+    ]
 
-    console.log(`[Edge Function] [Deploy V9] Calling Gemini model: gemini-1.5-flash-latest`);
+    let result = null
+    let workingModel = ""
+    let lastError = ""
 
-    // FOR STABLE API COMPATIBILITY:
-    // If systemInstruction is provided, we prepend it as a 'user' message 
-    // since the v1 endpoint often rejects the 'systemInstruction' field in the JSON payload.
-    let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
-    
-    if (systemInstruction) {
-      finalContents = [
-        { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}\n\nPlease follow the above instruction strictly for all subsequent messages.` }] },
-        { role: 'model', parts: [{ text: "Understood. I will follow those instructions." }] },
-        ...finalContents
-      ];
+    for (const modelConfig of modelsToTry) {
+      try {
+        console.log(`[V10] Attempting: ${modelConfig.name} (${modelConfig.apiVersion})`)
+        const genAI = new GoogleGenerativeAI(apiKey)
+        const model = genAI.getGenerativeModel({ 
+          model: modelConfig.name,
+          generationConfig: generationConfig
+        }, { apiVersion: modelConfig.apiVersion as any })
+
+        // Prepare contents
+        let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
+        if (systemInstruction) {
+          finalContents = [
+            { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}` }] },
+            { role: 'model', parts: [{ text: "Understood." }] },
+            ...finalContents
+          ];
+        }
+
+        const genResult = await model.generateContent({ contents: finalContents })
+        const response = await genResult.response
+        const text = response.text()
+        
+        result = text
+        workingModel = `${modelConfig.name} (${modelConfig.apiVersion})`
+        console.log(`[V10] SUCCESS with ${workingModel}`)
+        break 
+      } catch (e: any) {
+        console.error(`[V10] FAILED ${modelConfig.name}:`, e.message)
+        lastError = e.message
+        continue
+      }
     }
 
-    const request = { contents: finalContents };
-
-    const result = await model.generateContent(request)
-    const response = await result.response
-    const text = response.text()
+    if (!result) {
+      throw new Error(`All models failed. Last error: ${lastError}. Models tried: ${modelsToTry.map(m => m.name).join(', ')}`)
+    }
 
     return new Response(
-      JSON.stringify({ text, deploy: "V9" }),
+      JSON.stringify({ text: result, deploy: "V10", model: workingModel }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -66,16 +86,14 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] Error:", error.message)
+    console.error("[Edge Function] Final Error:", error.message)
     
-    // Return 200 with error data so Supabase Function client doesn't throw a generic exception
-    // and we can see the real error message in the client console.
     return new Response(
       JSON.stringify({ 
         error: error.message,
         details: error.stack,
         isAIFailure: true,
-        deploy: "V9" // SURFACES VERSION EVEN ON ERROR
+        deploy: "V10"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
