@@ -15,24 +15,41 @@ export const getApiKey = () => "HIDDEN_IN_SUPABASE";
 
 const invokeGemini = async (contents: any[], systemInstruction?: string, responseSchema?: any) => {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Supabase not initialized");
+    if (!supabase) throw new Error("Supabase client failed to initialize.");
 
-    const { data, error } = await supabase.functions.invoke('gemini', {
-        body: { 
-            contents, 
-            systemInstruction,
-            generationConfig: responseSchema ? {
-                responseMimeType: "application/json",
-                responseSchema
-            } : undefined
+    try {
+        const { data, error } = await supabase.functions.invoke('gemini', {
+            body: { 
+                contents, 
+                systemInstruction,
+                generationConfig: responseSchema ? {
+                    responseMimeType: "application/json",
+                    responseSchema
+                } : undefined
+            }
+        });
+
+        if (error) {
+            console.error("[AI Service] Supabase Function Error:", error);
+            throw new Error(`Edge Function Error: ${error.message || JSON.stringify(error)}`);
         }
-    });
 
-    if (error) throw error;
-    if (data.error) throw new Error(data.error);
+        if (data?.error) {
+            console.error("[AI Service] Gemini API Error:", data.error);
+            throw new Error(`Gemini Error: ${typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))}`);
+        }
 
-    // Adapt response format from Google's API to what the app expects
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        // Adapt response format from Google's API to what the app expects
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+            console.warn("[AI Service] Empty response from Gemini. Data:", data);
+            return "";
+        }
+        return text;
+    } catch (e: any) {
+        console.error("[AI Service] Invoke Exception:", e);
+        throw e;
+    }
 };
 
 /**
