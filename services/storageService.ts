@@ -331,11 +331,17 @@ export const deleteAccount = async (id: string) => {
     if (error) throw new Error(stringifyAny(error));
 };
 
-export const fetchTransactions = async (uid?: string): Promise<Transaction[]> => {
+export const fetchTransactions = async (uid?: string, startDate?: string): Promise<Transaction[]> => {
     try {
         const { supabase, userId } = await getContext();
+        let query = supabase.from('transactions').select('*').eq('user_id', uid || userId).order('date', { ascending: false });
+        
+        if (startDate) {
+            query = query.gte('date', startDate);
+        }
+
         return safeFetch<Transaction>(
-            supabase.from('transactions').select('*').eq('user_id', uid || userId).order('date', { ascending: false }),
+            query,
             mapTransaction,
             'transactions'
         );

@@ -19,7 +19,7 @@ import {
 import { initSupabase, isConfigured } from './services/supabaseClient';
 import { ChevronDown, PiggyBank, ShieldCheck, LogOut, HelpCircle, Loader, CreditCard, Target, TrendingUp, RefreshCw, Zap } from 'lucide-react';
 import { calculateNextDate, getSmartAmount, sortAccounts } from './utils/finance';
-import { parseISO, format, startOfDay, isBefore, isSameDay } from 'date-fns';
+import { parseISO, format, startOfDay, isBefore, isSameDay, subMonths } from 'date-fns';
 import { Chat } from "@google/genai";
 
 const App: React.FC = () => {
@@ -195,12 +195,19 @@ const App: React.FC = () => {
         });
       }, 15000);
 
-      loadData().then(({ recurring: recs, transactions: txs }) => {
-        console.log("[App] Data loaded, triggering recurring check...");
+      // Phase 1: PRIORITY (Accounts, Recurring, Recent TXs)
+      loadData(session.user.id, true).then(({ recurring: recs, transactions: txs }) => {
+        console.log("[App] Priority data loaded, triggering initial rules process...");
         processDueRecurring(recs, txs).finally(() => {
-          console.log("[App] Interaction Guard: Data fully hydrated.");
+          console.log("[App] Phase 1 Completion: Unlocking UI Interaction.");
           clearTimeout(syncTimer);
           setIsDataLoading(false);
+
+          // Phase 2: BACKGROUND (History, Budgets, Goals, Vals)
+          setTimeout(() => {
+            console.log("[App] Starting Phase 2: Full History Sync...");
+            loadData(session.user.id, false);
+          }, 1000); // 1s breather
         });
       });
     } else {
@@ -208,27 +215,43 @@ const App: React.FC = () => {
     }
   }, [session]);
 
-  const loadData = async () => {
-    if (!session?.user) return { recurring: [], transactions: [] };
-    console.log("[App] loadData: Starting Promise.all fetches...");
+  const loadData = async (uid: string, priorityOnly: boolean = false) => {
+    console.log(`[App] loadData (priorityOnly: ${priorityOnly}) starting...`);
     try {
-      const uid = session.user.id;
-      const [accs, txs, recs, budgets, vals, cats, gls, rls] = await Promise.all([
-        fetchAccounts(uid), fetchTransactions(uid), fetchRecurring(uid),
-        fetchCategoryBudgets(uid), fetchValuations(uid), fetchCategories(uid), fetchGoals(uid), fetchRules(uid)
-      ]);
-      console.log("[App] loadData: All fetches completed. Processing results...");
-      const sortedAccs = sortAccounts(accs || []);
-      setAccounts(sortedAccs);
-      setTransactions(txs || []);
-      setRecurring(recs || []);
-      setCategories(cats || []);
-      setCategoryBudgets(budgets || []);
-      setValuations(vals || []);
-      setGoals(gls || []);
-      setRules(rls || []);
-      console.log("[App] loadData: State updates triggered.");
-      return { recurring: recs || [], transactions: txs || [] };
+      if (priorityOnly) {
+        const twoMonthsAgo = format(subMonths(new Date(), 2), 'yyyy-MM-dd');
+        const [accs, txs, recs, cats, rls] = await Promise.all([
+          fetchAccounts(uid),
+          fetchTransactions(uid, twoMonthsAgo),
+          fetchRecurring(uid),
+          fetchCategories(uid),
+          fetchRules(uid)
+        ]);
+
+        const sortedAccs = sortAccounts(accs || []);
+        setAccounts(sortedAccs);
+        setTransactions(txs || []);
+        setRecurring(recs || []);
+        setCategories(cats || []);
+        setRules(rls || []);
+
+        return { recurring: recs || [], transactions: txs || [] };
+      } else {
+        // Deep Background Load
+        const [fullTxs, budgets, vals, gls] = await Promise.all([
+          fetchTransactions(uid),
+          fetchCategoryBudgets(uid),
+          fetchValuations(uid),
+          fetchGoals(uid)
+        ]);
+
+        setTransactions(fullTxs || []);
+        setCategoryBudgets(budgets || []);
+        setValuations(vals || []);
+        setGoals(gls || []);
+
+        return { recurring: [], transactions: fullTxs || [] };
+      }
     } catch (e: any) {
       console.error("[App] loadData ERROR:", e);
       return { recurring: [], transactions: [] };
@@ -358,7 +381,9 @@ const App: React.FC = () => {
       if (data.valuations?.length) await batchCreateValuations(data.valuations);
       if (data.goals?.length) await batchCreateGoals(data.goals);
       if (data.rules?.length) for (const r of data.rules) await saveRule(r);
-      await loadData();
+      if (session?.user) {
+        await loadData(session.user.id, false);
+      }
       alert("Data successfully restored from backup.");
     } catch (e: any) { alert("Restore failed: " + e.message); } finally { setIsRestoring(false); }
   };

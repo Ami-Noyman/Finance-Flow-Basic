@@ -12,8 +12,9 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let apiKey = ''
   try {
-    const apiKey = Deno.env.get("GEMINI_API_KEY")
+    apiKey = Deno.env.get("GEMINI_API_KEY") || ''
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY is not set in Supabase Secrets")
     }
@@ -27,54 +28,21 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V16 ULTIMATE MAPPING: Exhaustive model discovery
-    const results: any = {
-      listResults: null,
-      probes: {}
-    }
+    // V17 FINAL PRODUCTION: Use Gemini 2.0 Flash
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.0-flash",
+        systemInstruction: "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
+    })
 
-    // 1. Get ALL models with their supported methods
-    try {
-        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-        const listData = await listResp.json()
-        results.listResults = listData.models || []
-        
-        // 2. Select the top candidates from the list
-        const candidates = (listData.models || [])
-            .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
-            .map((m: any) => m.name.split("/").pop())
-            .slice(0, 5) // Test top 5
-
-        const testPrompt = { contents: [{ role: 'user', parts: [{ text: "ping" }] }] }
-
-        for (const modelId of candidates) {
-            try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(testPrompt)
-                })
-                const data = await resp.json()
-                results.probes[modelId] = { status: resp.status, ok: resp.ok }
-                if (resp.ok) {
-                    results.successModel = modelId
-                    results.successData = data
-                    break; // stop at first success
-                }
-            } catch (e: any) {
-                results.probes[modelId] = { error: e.message }
-            }
-        }
-    } catch (e: any) {
-        results.listError = e.message
-    }
+    const result = await model.generateContent(prompt)
+    const text = result.response.text().trim().replace(/['"`]/g, '')
 
     return new Response(
       JSON.stringify({ 
-        text: results.successData?.candidates?.[0]?.content?.parts?.[0]?.text || "MAPPING_COMPLETE", 
-        deploy: "V16", 
-        mapping: results 
+        text, 
+        deploy: "V17",
+        model: "gemini-2.0-flash"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -83,10 +51,22 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V16 Error:", error.message)
-    return new Response(
-      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V16" }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
+    console.error("[Edge Function] V17 Error:", error.message)
+    
+    // Fallback attempt if 2.0 fails unexpectedly
+    try {
+        const genAI = new GoogleGenerativeAI(apiKey)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+        const result = await model.generateContent(prompt)
+        return new Response(
+            JSON.stringify({ text: result.response.text().trim(), deploy: "V17-Fallback" }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        )
+    } catch (e) {
+        return new Response(
+            JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V17-Error" }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        )
+    }
   }
 })
