@@ -33,14 +33,14 @@ serve(async (req) => {
     // Explicitly use v1beta for features like systemInstruction
     const model = genAI.getGenerativeModel(
       { 
-        model: "gemini-1.5-flash-latest",
+        model: "gemini-1.5-flash",
         systemInstruction: systemInstruction,
         generationConfig: generationConfig
       },
       { apiVersion: 'v1beta' }
     )
 
-    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash-latest (v1beta)`);
+    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash (v1beta)`);
 
     // CRITICAL: We MUST wrap the array in an object with a 'contents' field,
     // otherwise the SDK treats the array elements as 'Part' objects instead of 'Content' objects,
