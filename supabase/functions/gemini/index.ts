@@ -25,16 +25,16 @@ serve(async (req) => {
 
     const body: any = {
       contents,
-      generationConfig: generationConfig || {
+      generation_config: generationConfig || {
         temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
+        top_k: 40,
+        top_p: 0.95,
+        max_output_tokens: 2048,
       }
     }
 
     if (systemInstruction) {
-      body.systemInstruction = {
+      body.system_instruction = {
         parts: [{ text: systemInstruction }]
       }
     }

@@ -23,8 +23,8 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
                 contents, 
                 systemInstruction,
                 generationConfig: responseSchema ? {
-                    responseMimeType: "application/json",
-                    responseSchema
+                    response_mime_type: "application/json",
+                    response_schema: responseSchema
                 } : undefined
             }
         });
