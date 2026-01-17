@@ -27,33 +27,47 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V12 PRODUCTION: SDK with v1beta explicit version
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      generationConfig: generationConfig
-    }, { apiVersion: 'v1beta' })
+    // V13 EXHAUSTIVE NAKED PROBE
+    // We probe multiple variants to see which one works (if any) and WHY
+    const results: any = {}
+    
+    const probes = [
+      { id: "v1beta-flash", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}` },
+      { id: "v1beta-flash-8b", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}` },
+      { id: "v1-flash", url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}` },
+      { id: "v1-pro", url: `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}` }
+    ]
 
-    console.log(`[Edge Function] [Deploy V12] Calling Gemini 1.5 Flash via v1beta SDK`);
-
-    // Handle System Instructions for Chat compatibility
-    let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
-    if (systemInstruction) {
-      finalContents = [
-        { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}` }] },
-        { role: 'model', parts: [{ text: "Understood." }] },
-        ...finalContents
-      ];
+    const probePayload = {
+      contents: [{ role: 'user', parts: [{ text: "echo: probe" }] }]
     }
 
-    const result = await model.generateContent({ contents: finalContents })
-    const response = await result.response
-    const text = response.text()
-
-    if (!text) throw new Error("AI returned an empty response.")
+    for (const p of probes) {
+      try {
+        console.log(`[V13] Probing ${p.id}...`)
+        const resp = await fetch(p.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(probePayload)
+        })
+        const data = await resp.json()
+        results[p.id] = { status: resp.status, body: data }
+        if (resp.status === 200) {
+            console.log(`[V13] SUCCESS with ${p.id}`)
+        } else {
+            console.error(`[V13] FAILED ${p.id}: ${resp.status}`)
+        }
+      } catch (e: any) {
+        results[p.id] = { error: e.message }
+      }
+    }
 
     return new Response(
-      JSON.stringify({ text, deploy: "V12" }),
+      JSON.stringify({ 
+        text: "EXHAUSTIVE_PROBE_COMPLETE", 
+        deploy: "V13", 
+        probes: results 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -61,14 +75,14 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V12 Final Error:", error.message)
+    console.error("[Edge Function] V13 Final Error:", error.message)
     
     return new Response(
       JSON.stringify({ 
         error: error.message,
         details: error.stack,
         isAIFailure: true,
-        deploy: "V12"
+        deploy: "V13"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

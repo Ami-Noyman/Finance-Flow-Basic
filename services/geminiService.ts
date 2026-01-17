@@ -42,6 +42,9 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
 
         if (data?.deploy) {
             console.log(`[AI Service] Edge Function Version: ${data.deploy}`);
+            if (data.probes) {
+                console.log(`[AI Service] V13 Exhaustive Probes:`, data.probes);
+            }
         }
 
         // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)

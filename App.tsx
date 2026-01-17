@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const loadedUserIdRef = useRef<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [financialInsight, setFinancialInsight] = useState<string | null>(null);
 
@@ -184,10 +185,14 @@ const App: React.FC = () => {
 
       console.log("[App] Session updated, triggering primary loadData for:", session.user.id);
       loadedUserIdRef.current = session.user.id;
+      setIsDataLoading(true);
 
       loadData().then(({ recurring: recs, transactions: txs }) => {
         console.log("[App] Data loaded, triggering recurring check...");
-        processDueRecurring(recs, txs);
+        processDueRecurring(recs, txs).finally(() => {
+          console.log("[App] Interaction Guard: Data fully hydrated.");
+          setIsDataLoading(false);
+        });
       });
     } else {
       loadedUserIdRef.current = null;
@@ -414,6 +419,14 @@ const App: React.FC = () => {
           <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           <div className="text-xl font-black uppercase tracking-widest">Restoring...</div>
           <p className="text-slate-200 text-sm font-black animate-pulse">{restorationProgress}</p>
+        </div>
+      )}
+      {isDataLoading && (
+        <div className="fixed inset-0 z-[90] bg-white/50 backdrop-blur-[1px] cursor-wait flex items-center justify-center">
+          <div className="bg-white/80 px-4 py-2 rounded-full shadow-lg border border-orange-100 flex items-center gap-2 text-orange-600 text-sm font-medium animate-pulse">
+            <Loader size={16} className="animate-spin" />
+            Syncing your flow...
+          </div>
         </div>
       )}
     </div>
