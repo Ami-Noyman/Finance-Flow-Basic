@@ -221,11 +221,20 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
             }));
         });
 
+        // O(N) OPTIMIZATION: Index transactions by date for instant lookup
+        const txByDate = new Map<string, Transaction[]>();
+        transactions.forEach(t => {
+            if (!txByDate.has(t.date)) txByDate.set(t.date, []);
+            txByDate.get(t.date)!.push(t);
+        });
+
         for (let i = 0; i <= horizonDays; i++) {
             const currentDate = addDays(today, i);
             const currentDateStr = format(currentDate, 'yyyy-MM-dd');
 
-            transactions.filter(t => t.date === currentDateStr).forEach(t => {
+            const todaysTxs = txByDate.get(currentDateStr) || [];
+
+            todaysTxs.forEach(t => {
                 if (targetAccountIds.includes(t.accountId)) {
                     if (t.type === TransactionType.INCOME) runningBalance += t.amount;
                     else runningBalance -= t.amount;
@@ -258,7 +267,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
             scenarios.forEach(s => {
                 if (!s.isActive) return;
 
-                transactions.filter(t => t.date === currentDateStr).forEach(t => {
+                todaysTxs.forEach(t => {
                     if (targetAccountIds.includes(t.accountId)) {
                         const reduction = (t.type === TransactionType.EXPENSE) ? (1 - s.expenseReduction / 100) : 1;
                         if (t.type === TransactionType.INCOME) scenarioBalances[s.id] += t.amount;

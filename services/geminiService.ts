@@ -13,7 +13,18 @@ export const hasValidApiKey = () => {
 
 export const getApiKey = () => "HIDDEN_IN_SUPABASE";
 
+const QUOTA_COOLDOWN_MS = 60 * 1000; // 60 seconds
+let lastQuotaErrorTime = 0;
+
 const invokeGemini = async (contents: any[], systemInstruction?: string, responseSchema?: any) => {
+    // CIRCUIT BREAKER: Avoid calling AI if we are in a cooldown period
+    const now = Date.now();
+    if (now - lastQuotaErrorTime < QUOTA_COOLDOWN_MS) {
+        const remaining = Math.ceil((QUOTA_COOLDOWN_MS - (now - lastQuotaErrorTime)) / 1000);
+        console.warn(`[AI Service] Circuit Breaker Active. Cooldown: ${remaining}s`);
+        throw new Error("Quota exceeded (Cooldown Active). Please wait before trying again.");
+    }
+
     const supabase = initSupabase();
     if (!supabase) throw new Error("Supabase client failed to initialize.");
 
@@ -46,13 +57,25 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
 
         // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)
         if (data?.isAIFailure) {
-            console.error("[AI Service] Server-side AI Error:", data.error);
-            throw new Error(`Gemini Error: ${data.error}`);
+            const errorMsg = data.error || "Unknown AI error";
+            console.error("[AI Service] Server-side AI Error:", errorMsg);
+            
+            // Set cooldown if it's a quota error
+            if (errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+                lastQuotaErrorTime = Date.now();
+            }
+            throw new Error(`Gemini Error: ${errorMsg}`);
         }
 
         if (data?.error) {
-            console.error("[AI Service] Gemini API Error:", data.error);
-            throw new Error(`Gemini Error: ${typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))}`);
+            const errorMsg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
+            console.error("[AI Service] Gemini API Error:", errorMsg);
+
+            // Set cooldown if it's a quota error
+            if (errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+                lastQuotaErrorTime = Date.now();
+            }
+            throw new Error(`Gemini Error: ${errorMsg}`);
         }
 
 
@@ -65,6 +88,12 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
         return text;
     } catch (e: any) {
         console.error("[AI Service] Invoke Exception:", e);
+        
+        // Also check exception message for quota
+        const msg = e.message || "";
+        if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+            lastQuotaErrorTime = Date.now();
+        }
         throw e;
     }
 };
