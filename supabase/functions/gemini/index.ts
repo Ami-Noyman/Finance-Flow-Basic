@@ -30,13 +30,13 @@ serve(async (req) => {
     // Initialize the SDK
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    // STABLE VERSION: Explicitly force v1
+    // STABLE VERSION: Try the -latest alias which is often more reliable
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       generationConfig: generationConfig
-    }, { apiVersion: 'v1' })
+    })
 
-    console.log(`[Edge Function] [Deploy V8] Calling Gemini model: gemini-1.5-flash (v1)`);
+    console.log(`[Edge Function] [Deploy V9] Calling Gemini model: gemini-1.5-flash-latest`);
 
     // FOR STABLE API COMPATIBILITY:
     // If systemInstruction is provided, we prepend it as a 'user' message 
@@ -58,7 +58,7 @@ serve(async (req) => {
     const text = response.text()
 
     return new Response(
-      JSON.stringify({ text, deploy: "V8" }),
+      JSON.stringify({ text, deploy: "V9" }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -74,7 +74,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         details: error.stack,
-        isAIFailure: true
+        isAIFailure: true,
+        deploy: "V9" // SURFACES VERSION EVEN ON ERROR
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
