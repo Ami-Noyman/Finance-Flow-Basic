@@ -30,14 +30,14 @@ serve(async (req) => {
     // Initialize the SDK
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    // Use the default stable API version (v1) which now supports systemInstructions
+    // STABLE VERSION: Explicitly force v1 to avoid implicit v1beta conversion
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
       systemInstruction: systemInstruction,
       generationConfig: generationConfig
-    })
+    }, { apiVersion: 'v1' })
 
-    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash (stable)`);
+    console.log(`[Edge Function] [Deploy V7] Calling Gemini model: gemini-1.5-flash (v1)`);
 
     // CRITICAL: We MUST wrap the array in an object with a 'contents' field,
     // otherwise the SDK treats the array elements as 'Part' objects instead of 'Content' objects,
