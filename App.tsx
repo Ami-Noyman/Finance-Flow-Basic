@@ -111,9 +111,10 @@ const App: React.FC = () => {
 
     if (newTransactions.length > 0) {
       try {
+        console.log(`[Recurring Engine] Persisting ${newTransactions.length} transactions and ${updatedRecurring.length} rule updates...`);
         await batchCreateTransactions(newTransactions);
-        for (const rec of updatedRecurring) {
-          await createRecurring(rec);
+        if (updatedRecurring.length > 0) {
+          await batchCreateRecurring(updatedRecurring);
         }
 
         setTransactions(prev => [...newTransactions, ...prev]);
@@ -121,9 +122,12 @@ const App: React.FC = () => {
           const found = updatedRecurring.find(u => u.id === old.id);
           return found ? found : old;
         }));
+        console.log("[Recurring Engine] Finished processing successfully.");
       } catch (e) {
         console.error("[Recurring Engine] ERROR:", e);
       }
+    } else {
+      console.log("[Recurring Engine] No due transactions found.");
     }
   };
 
@@ -156,7 +160,19 @@ const App: React.FC = () => {
       console.log("[App] onAuthStateChange event:", event, "Session present:", !!session);
       setSession(session);
     });
-    return () => subscription.unsubscribe();
+
+    // SAFETY TIMEOUT: Ensure loader doesn't hang forever
+    const timer = setTimeout(() => {
+      setIsLoading(prev => {
+        if (prev) console.warn("[App] Force-closing loader after 10s safety timeout.");
+        return false;
+      });
+    }, 10000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timer);
+    };
   }, [isSetup]);
 
   useEffect(() => {

@@ -27,55 +27,33 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V11 DEEP DIAGNOSTIC: SDK-LESS PROBE
-    const diagnosticResults: any = {
-      detectedModels: [],
-      rawFlashProbe: null,
-      errorLog: []
+    // V12 PRODUCTION: SDK with v1beta explicit version
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      generationConfig: generationConfig
+    }, { apiVersion: 'v1beta' })
+
+    console.log(`[Edge Function] [Deploy V12] Calling Gemini 1.5 Flash via v1beta SDK`);
+
+    // Handle System Instructions for Chat compatibility
+    let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
+    if (systemInstruction) {
+      finalContents = [
+        { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}` }] },
+        { role: 'model', parts: [{ text: "Understood." }] },
+        ...finalContents
+      ];
     }
 
-    try {
-      console.log("[V11] Phase 1: Listing models via raw fetch...")
-      const listResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-      )
-      const listData = await listResponse.json()
-      diagnosticResults.detectedModels = listData.models?.map((m: any) => m.name) || []
-      console.log(`[V11] Discovered ${diagnosticResults.detectedModels.length} models.`)
-    } catch (e: any) {
-      diagnosticResults.errorLog.push(`ListModels Failed: ${e.message}`)
-    }
+    const result = await model.generateContent({ contents: finalContents })
+    const response = await result.response
+    const text = response.text()
 
-    try {
-      console.log("[V11] Phase 2: Attempting RAW fetch to v1beta flash model...")
-      const probePayload = {
-        contents: [{ role: 'user', parts: [{ text: "echo: testing" }] }]
-      }
-      const flashResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(probePayload)
-        }
-      )
-      const flashData = await flashResponse.json()
-      diagnosticResults.rawFlashProbe = flashData
-      console.log("[V11] Raw probe executed.")
-    } catch (e: any) {
-      diagnosticResults.errorLog.push(`Raw Flash Probe Failed: ${e.message}`)
-    }
+    if (!text) throw new Error("AI returned an empty response.")
 
-    // Now fallback to the best SDK attempt if we want to return actual text
-    // BUT for V11 we want to surface the diagnostics primary.
-    
     return new Response(
-      JSON.stringify({ 
-        text: "DIAGNOSTIC_MODE_ACTIVE", 
-        deploy: "V11", 
-        diagnostics: diagnosticResults 
-      }),
+      JSON.stringify({ text, deploy: "V12" }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -83,14 +61,14 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V11 Final Error:", error.message)
+    console.error("[Edge Function] V12 Final Error:", error.message)
     
     return new Response(
       JSON.stringify({ 
         error: error.message,
         details: error.stack,
         isAIFailure: true,
-        deploy: "V11"
+        deploy: "V12"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
