@@ -42,8 +42,14 @@ serve(async (req) => {
 
     console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash (v1beta)`);
 
-    // Handle either a single prompt string or a contents array (history)
-    const result = await model.generateContent(contents || prompt)
+    // CRITICAL: We MUST wrap the array in an object with a 'contents' field,
+    // otherwise the SDK treats the array elements as 'Part' objects instead of 'Content' objects,
+    // which causes the 'Unknown name "role"' error.
+    const request = contents 
+      ? { contents } 
+      : { contents: [{ role: 'user', parts: [{ text: prompt }] }] }
+
+    const result = await model.generateContent(request)
     const response = await result.response
     const text = response.text()
 
