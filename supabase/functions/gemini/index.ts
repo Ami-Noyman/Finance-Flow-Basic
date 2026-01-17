@@ -27,54 +27,58 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V14 DISCOVERY PROXY: Exhaustive testing with listModels output
+    // V15 PROTOCOL DEEP DIVE: Isolate Auth Methods & API Versions
     const results: any = {
-      listModels: [],
       probes: {}
     }
 
-    // 1. Get the real list of models again
+    const testPrompt = { contents: [{ role: 'user', parts: [{ text: "ping" }] }] }
+
+    // Variant 1: Query Param ONLY (Standard for many examples)
     try {
-        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-        const listData = await listResp.json()
-        results.listModels = listData.models || []
-    } catch (e: any) {
-        results.listModelsError = e.message
-    }
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPrompt)
+      })
+      results.probes["query-v1beta-flash"] = { status: resp.status, body: await resp.json() }
+    } catch (e: any) { results.probes["query-v1beta-flash"] = { error: e.message } }
 
-    // 2. Probes with diverse configurations
-    const probeConfigs = [
-      { id: "v1beta-flash", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent` },
-      { id: "v1beta-flash-latest", url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent` },
-      { id: "v1-flash", url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent` },
-      { id: "v1-pro", url: `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent` }
-    ]
+    // Variant 2: Header x-goog-api-key ONLY
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(testPrompt)
+      })
+      results.probes["header-v1beta-flash"] = { status: resp.status, body: await resp.json() }
+    } catch (e: any) { results.probes["header-v1beta-flash"] = { error: e.message } }
 
-    const probePayload = { contents: [{ role: 'user', parts: [{ text: "echo: probe" }] }] }
+    // Variant 3: Stable v1 + Query Param
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPrompt)
+      })
+      results.probes["query-v1-flash"] = { status: resp.status, body: await resp.json() }
+    } catch (e: any) { results.probes["query-v1-flash"] = { error: e.message } }
 
-    for (const config of probeConfigs) {
-      try {
-        const urlWithKey = `${config.url}?key=${apiKey}`
-        const resp = await fetch(urlWithKey, {
-          method: 'POST',
-          headers: { 
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey // Try both query param and header
-          },
-          body: JSON.stringify(probePayload)
-        })
-        const data = await resp.json()
-        results.probes[config.id] = { status: resp.status, body: data }
-      } catch (e: any) {
-        results.probes[config.id] = { error: e.message }
-      }
-    }
+    // Variant 4: Try 8b-flash (sometimes available when flash isn't)
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPrompt)
+      })
+      results.probes["query-v1beta-8b"] = { status: resp.status, body: await resp.json() }
+    } catch (e: any) { results.probes["query-v1beta-8b"] = { error: e.message } }
 
     return new Response(
       JSON.stringify({ 
-        text: "DISCOVERY_PROBE_V14_COMPLETE", 
-        deploy: "V14", 
-        discovery: results 
+        text: "PROTOCOL_DEEP_DIVE_V15_COMPLETE", 
+        deploy: "V15", 
+        results: results 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -83,9 +87,9 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V14 Error:", error.message)
+    console.error("[Edge Function] V15 Error:", error.message)
     return new Response(
-      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V14" }),
+      JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V15" }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }

@@ -431,11 +431,17 @@ const App: React.FC = () => {
         </div>
       )}
       {isDataLoading && (
-        <div className="fixed inset-0 z-[90] bg-white/50 backdrop-blur-[1px] cursor-wait flex items-center justify-center">
+        <div className="fixed inset-0 z-[90] bg-white/50 backdrop-blur-[1px] cursor-wait flex flex-col items-center justify-center gap-4 text-center">
           <div className="bg-white/80 px-4 py-2 rounded-full shadow-lg border border-orange-100 flex items-center gap-2 text-orange-600 text-sm font-medium animate-pulse">
             <Loader size={16} className="animate-spin" />
             Syncing your flow...
           </div>
+          <button
+            onClick={() => setIsDataLoading(false)}
+            className="mt-2 px-3 py-1 bg-white border border-gray-200 rounded-lg text-[10px] text-gray-400 font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all pointer-events-auto shadow-sm"
+          >
+            Emergency Unlock
+          </button>
         </div>
       )}
     </div>
