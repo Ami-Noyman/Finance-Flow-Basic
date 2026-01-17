@@ -430,6 +430,7 @@ const App: React.FC = () => {
         <header className="bg-orange-600 border-b border-orange-700 px-6 py-3 flex justify-between items-center shadow-sm z-10">
           <h1 className="text-xl font-bold text-white capitalize flex items-center gap-2">
             {activeTab}
+            <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-[10px] font-black text-white/60 select-none">V18</span>
             {isDataLoading && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-white/20 rounded text-[10px] font-black uppercase tracking-widest animate-pulse">
                 <RefreshCw size={10} className="animate-spin" />
