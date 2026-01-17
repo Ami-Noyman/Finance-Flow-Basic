@@ -17,10 +17,16 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
     const supabase = initSupabase();
     if (!supabase) throw new Error("Supabase client failed to initialize.");
 
+    // Ensure role is present for all content items (Gemini SDK requirement)
+    const sanitizedContents = contents.map(c => ({
+        role: c.role || 'user',
+        parts: c.parts
+    }));
+
     try {
         const { data, error } = await supabase.functions.invoke('gemini', {
             body: { 
-                contents, 
+                contents: sanitizedContents, 
                 systemInstruction,
                 generationConfig: responseSchema ? {
                     response_mime_type: "application/json",
@@ -32,6 +38,12 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
         if (error) {
             console.error("[AI Service] Supabase Function Error:", error);
             throw new Error(`Edge Function Error: ${error.message || JSON.stringify(error)}`);
+        }
+
+        // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)
+        if (data?.isAIFailure) {
+            console.error("[AI Service] Server-side AI Error:", data.error);
+            throw new Error(`Gemini Error: ${data.error}`);
         }
 
         if (data?.error) {

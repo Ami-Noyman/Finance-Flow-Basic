@@ -18,7 +18,10 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY is not set in Supabase Secrets")
     }
 
-    const { prompt, contents, systemInstruction, generationConfig } = await req.json()
+    const body = await req.json()
+    console.log("[Edge Function] Request body:", JSON.stringify(body))
+    
+    const { prompt, contents, systemInstruction, generationConfig } = body
 
     if (!prompt && !contents) {
       throw new Error("Missing prompt or contents in request body")
@@ -27,13 +30,17 @@ serve(async (req) => {
     // Initialize the SDK
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: systemInstruction,
-      generationConfig: generationConfig
-    })
+    // Explicitly use v1beta for features like systemInstruction
+    const model = genAI.getGenerativeModel(
+      { 
+        model: "gemini-1.5-flash",
+        systemInstruction: systemInstruction,
+        generationConfig: generationConfig
+      },
+      { apiVersion: 'v1beta' }
+    )
 
-    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash`);
+    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash (v1beta)`);
 
     // Handle either a single prompt string or a contents array (history)
     const result = await model.generateContent(contents || prompt)
@@ -51,15 +58,17 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("[Edge Function] Error:", error.message)
     
-    // Return a structured error so the client can show helpful info
+    // Return 200 with error data so Supabase Function client doesn't throw a generic exception
+    // and we can see the real error message in the client console.
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        details: error.stack
+        details: error.stack,
+        isAIFailure: true
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+        status: 200 
       }
     )
   }
