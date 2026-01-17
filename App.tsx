@@ -41,6 +41,7 @@ const App: React.FC = () => {
 
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
   const chatSessionRef = useRef<Chat | null>(null);
+  const loadedUserIdRef = useRef<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -160,11 +161,20 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (session?.user) {
-      console.log("[App] Session updated, triggering loadData for:", session.user.email);
+      if (loadedUserIdRef.current === session.user.id) {
+        console.log("[App] Session updated but user ID same as loaded. Skipping redundant load.");
+        return;
+      }
+
+      console.log("[App] Session updated, triggering primary loadData for:", session.user.id);
+      loadedUserIdRef.current = session.user.id;
+
       loadData().then(({ recurring: recs, transactions: txs }) => {
         console.log("[App] Data loaded, triggering recurring check...");
         processDueRecurring(recs, txs);
       });
+    } else {
+      loadedUserIdRef.current = null;
     }
   }, [session]);
 

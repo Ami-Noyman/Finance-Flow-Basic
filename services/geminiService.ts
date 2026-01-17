@@ -45,6 +45,9 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             if (data.model) {
                 console.log(`[AI Service] Successful Model: ${data.model}`);
             }
+            if (data.diagnostics) {
+                console.log(`[AI Service] V11 Diagnostics:`, data.diagnostics);
+            }
         }
 
         // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)

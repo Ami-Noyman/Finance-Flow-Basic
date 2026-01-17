@@ -27,58 +27,55 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V10 DIAGNOSTIC FAILOVER: Try multiple models until one works
-    const modelsToTry = [
-      { name: "gemini-1.5-flash", apiVersion: "v1" },
-      { name: "gemini-1.5-flash-latest", apiVersion: "v1beta" },
-      { name: "gemini-1.5-pro", apiVersion: "v1" },
-      { name: "gemini-pro", apiVersion: "v1" } // 1.0 Pro
-    ]
+    // V11 DEEP DIAGNOSTIC: SDK-LESS PROBE
+    const diagnosticResults: any = {
+      detectedModels: [],
+      rawFlashProbe: null,
+      errorLog: []
+    }
 
-    let result = null
-    let workingModel = ""
-    let lastError = ""
+    try {
+      console.log("[V11] Phase 1: Listing models via raw fetch...")
+      const listResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+      )
+      const listData = await listResponse.json()
+      diagnosticResults.detectedModels = listData.models?.map((m: any) => m.name) || []
+      console.log(`[V11] Discovered ${diagnosticResults.detectedModels.length} models.`)
+    } catch (e: any) {
+      diagnosticResults.errorLog.push(`ListModels Failed: ${e.message}`)
+    }
 
-    for (const modelConfig of modelsToTry) {
-      try {
-        console.log(`[V10] Attempting: ${modelConfig.name} (${modelConfig.apiVersion})`)
-        const genAI = new GoogleGenerativeAI(apiKey)
-        const model = genAI.getGenerativeModel({ 
-          model: modelConfig.name,
-          generationConfig: generationConfig
-        }, { apiVersion: modelConfig.apiVersion as any })
-
-        // Prepare contents
-        let finalContents = contents || [{ role: 'user', parts: [{ text: prompt }] }];
-        if (systemInstruction) {
-          finalContents = [
-            { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemInstruction}` }] },
-            { role: 'model', parts: [{ text: "Understood." }] },
-            ...finalContents
-          ];
-        }
-
-        const genResult = await model.generateContent({ contents: finalContents })
-        const response = await genResult.response
-        const text = response.text()
-        
-        result = text
-        workingModel = `${modelConfig.name} (${modelConfig.apiVersion})`
-        console.log(`[V10] SUCCESS with ${workingModel}`)
-        break 
-      } catch (e: any) {
-        console.error(`[V10] FAILED ${modelConfig.name}:`, e.message)
-        lastError = e.message
-        continue
+    try {
+      console.log("[V11] Phase 2: Attempting RAW fetch to v1beta flash model...")
+      const probePayload = {
+        contents: [{ role: 'user', parts: [{ text: "echo: testing" }] }]
       }
+      const flashResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(probePayload)
+        }
+      )
+      const flashData = await flashResponse.json()
+      diagnosticResults.rawFlashProbe = flashData
+      console.log("[V11] Raw probe executed.")
+    } catch (e: any) {
+      diagnosticResults.errorLog.push(`Raw Flash Probe Failed: ${e.message}`)
     }
 
-    if (!result) {
-      throw new Error(`All models failed. Last error: ${lastError}. Models tried: ${modelsToTry.map(m => m.name).join(', ')}`)
-    }
-
+    // Now fallback to the best SDK attempt if we want to return actual text
+    // BUT for V11 we want to surface the diagnostics primary.
+    
     return new Response(
-      JSON.stringify({ text: result, deploy: "V10", model: workingModel }),
+      JSON.stringify({ 
+        text: "DIAGNOSTIC_MODE_ACTIVE", 
+        deploy: "V11", 
+        diagnostics: diagnosticResults 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -86,14 +83,14 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] Final Error:", error.message)
+    console.error("[Edge Function] V11 Final Error:", error.message)
     
     return new Response(
       JSON.stringify({ 
         error: error.message,
         details: error.stack,
         isAIFailure: true,
-        deploy: "V10"
+        deploy: "V11"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
