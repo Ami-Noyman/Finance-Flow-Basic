@@ -39,10 +39,10 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             throw new Error(`Gemini Error: ${typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))}`);
         }
 
-        // Adapt response format from Google's API to what the app expects
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        // The Edge Function now returns { text } directly
+        const text = data?.text;
         if (!text) {
-            console.warn("[AI Service] Empty response from Gemini. Data:", data);
+            console.warn("[AI Service] Empty response from Edge Function. Data:", data);
             return "";
         }
         return text;

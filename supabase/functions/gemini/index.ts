@@ -1,8 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-
-// Use v1beta because system_instruction is not yet stable in v1 REST endpoint
-// Use -latest version because v1beta is picky about the alias mapping
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+import { GoogleGenerativeAI } from "npm:@google/generative-ai@0.21.0"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,55 +7,60 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { contents, systemInstruction, generationConfig } = await req.json()
     const apiKey = Deno.env.get("GEMINI_API_KEY")
-
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is not set on the server." }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error("GEMINI_API_KEY is not set in Supabase Secrets")
     }
 
-    const body: any = {
-      contents,
-      generation_config: generationConfig || {
-        temperature: 0.7,
-        top_k: 40,
-        top_p: 0.95,
-        max_output_tokens: 2048,
-      }
+    const { prompt, contents, systemInstruction, generationConfig } = await req.json()
+
+    if (!prompt && !contents) {
+      throw new Error("Missing prompt or contents in request body")
     }
 
-    if (systemInstruction) {
-      body.system_instruction = {
-        parts: [{ text: systemInstruction }]
-      }
-    }
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+    // Initialize the SDK
+    const genAI = new GoogleGenerativeAI(apiKey)
+    
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: systemInstruction,
+      generationConfig: generationConfig
     })
 
-    const data = await response.json()
+    console.log(`[Edge Function] Calling Gemini model: gemini-1.5-flash`);
+
+    // Handle either a single prompt string or a contents array (history)
+    const result = await model.generateContent(contents || prompt)
+    const response = await result.response
+    const text = response.text()
 
     return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ text }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
     )
-  } catch (error) {
+
+  } catch (error: any) {
+    console.error("[Edge Function] Error:", error.message)
+    
+    // Return a structured error so the client can show helpful info
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
+      }
     )
   }
 })
