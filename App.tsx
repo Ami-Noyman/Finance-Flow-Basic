@@ -59,9 +59,14 @@ const App: React.FC = () => {
     const workingRecurring = JSON.parse(JSON.stringify(currentRecurring)) as RecurringTransaction[];
 
     for (let r of workingRecurring) {
-      if (!r.isActive) continue;
+      if (!r.isActive) {
+        console.log(`[Recurring Engine] Skipping ${r.payee} - INACTIVE`);
+        continue;
+      }
 
       let nextDue = parseISO(r.nextDueDate);
+      console.log(`[Recurring Engine] Rule: ${r.payee} | Next Due: ${r.nextDueDate} | Today: ${format(today, 'yyyy-MM-dd')}`);
+
       let processedCount = r.occurrencesProcessed || 0;
       let hasPostedForThisRule = false;
 
