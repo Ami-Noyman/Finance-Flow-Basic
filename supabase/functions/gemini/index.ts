@@ -28,18 +28,26 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V19.0 ROBUST: Multi-model fallback strategy
+    // V20.0 COMPATIBILITY: Prepend instructions to avoid 400 "Unknown field systemInstruction" on v1 API
     const genAI = new GoogleGenerativeAI(apiKey)
     
+    // Default instruction
+    const defaultInstruction = "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'."
+    const finalInstruction = systemInstruction || defaultInstruction
+
     const tryModel = async (modelName: string, apiVer?: string) => {
         console.log(`[Edge Function] Attempting model: ${modelName} (${apiVer || 'default'})`)
-        const model = genAI.getGenerativeModel({ 
-            model: modelName,
-            systemInstruction: systemInstruction || "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
-        }, { apiVersion: apiVer })
+        const model = genAI.getGenerativeModel({ model: modelName }, { apiVersion: apiVer })
+
+        // Prepend instruction for maximum compatibility across v1/v1beta
+        const modifiedContents = contents ? [...contents] : [{ role: 'user', parts: [{ text: prompt }] }]
+        if (modifiedContents[0]?.parts[0]) {
+            const originalText = modifiedContents[0].parts[0].text || ""
+            modifiedContents[0].parts[0].text = `Instructions: ${finalInstruction}\n\nTask: ${originalText}`
+        }
 
         return await model.generateContent({
-            contents: contents || [{ role: 'user', parts: [{ text: prompt }] }],
+            contents: modifiedContents,
             generationConfig: generationConfig
         })
     }
@@ -69,7 +77,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         text, 
-        deploy: "V19.0",
+        deploy: "V20.0",
         model: activeModel
       }),
       { 
@@ -85,16 +93,22 @@ serve(async (req) => {
     if (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.includes("RESOURCE_EXHAUSTED")) {
         return new Response(
             JSON.stringify({ 
-                error: "All Gemini models are currently at their quota limit. This happens on free accounts after several requests. Please try again in about 1 minute.", 
+                error: "All Gemini models are reached their free quota limit. Please try again in 1-2 minutes.", 
                 isAIFailure: true, 
-                deploy: "V19-Quota" 
+                deploy: "V20-Quota",
+                model: "multiple-fails"
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
     }
 
     return new Response(
-        JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V19-Error" }),
+        JSON.stringify({ 
+            error: error.message, 
+            isAIFailure: true, 
+            deploy: "V20-Error",
+            model: "multiple-fails"
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
