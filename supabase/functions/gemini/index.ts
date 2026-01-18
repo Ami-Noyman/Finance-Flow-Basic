@@ -28,26 +28,49 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V18.0 STABLE: Use gemini-1.5-flash as primary for better free-tier quotas
+    // V19.0 ROBUST: Multi-model fallback strategy
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        systemInstruction: systemInstruction || "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
-    })
+    
+    const tryModel = async (modelName: string, apiVer?: string) => {
+        console.log(`[Edge Function] Attempting model: ${modelName} (${apiVer || 'default'})`)
+        const model = genAI.getGenerativeModel({ 
+            model: modelName,
+            systemInstruction: systemInstruction || "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
+        }, { apiVersion: apiVer })
 
-    // If contents is provided, use it. Otherwise use prompt.
-    const result = await model.generateContent({
-        contents: contents || [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: generationConfig
-    })
+        return await model.generateContent({
+            contents: contents || [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: generationConfig
+        })
+    }
+
+    let result;
+    let activeModel = "gemini-1.5-flash";
+    
+    try {
+        // Try 1: 1.5 Flash on V1 (Stable)
+        result = await tryModel("gemini-1.5-flash", "v1")
+    } catch (err1: any) {
+        console.warn("[Edge Function] 1.5-flash V1 failed:", err1.message)
+        try {
+            // Try 2: 2.0 Flash (Experimental)
+            activeModel = "gemini-2.0-flash"
+            result = await tryModel("gemini-2.0-flash")
+        } catch (err2: any) {
+            console.warn("[Edge Function] 2.0-flash failed:", err2.message)
+            // Try 3: 1.5 Pro (High Quota Fallback)
+            activeModel = "gemini-1.5-pro"
+            result = await tryModel("gemini-1.5-pro", "v1")
+        }
+    }
     
     const text = result.response.text().trim().replace(/['"`]/g, '')
 
     return new Response(
       JSON.stringify({ 
         text, 
-        deploy: "V18.0",
-        model: "gemini-1.5-flash"
+        deploy: "V19.0",
+        model: activeModel
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -56,34 +79,23 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V18 Error:", error.message)
+    console.error("[Edge Function] Final Error:", error.message)
     
-    // Explicit 429 error return
-    if (error.message.includes("429") || error.message.includes("quota") || error.message.includes("limit")) {
+    // Check if it's a quota issue across all models
+    if (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.includes("RESOURCE_EXHAUSTED")) {
         return new Response(
             JSON.stringify({ 
-                error: "Google AI Quota Exceeded. The free tier allows 15 requests per minute and 1,500 per day. Please try again in 1 minute.", 
+                error: "All Gemini models are currently at their quota limit. This happens on free accounts after several requests. Please try again in about 1 minute.", 
                 isAIFailure: true, 
-                deploy: "V18-Quota" 
+                deploy: "V19-Quota" 
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
     }
 
-    // Generic Fallback attempt
-    try {
-        const genAI = new GoogleGenerativeAI(apiKey)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-        const result = await model.generateContent(prompt)
-        return new Response(
-            JSON.stringify({ text: result.response.text().trim(), deploy: "V18-Fallback" }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-        )
-    } catch (e) {
-        return new Response(
-            JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V18-Error" }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-        )
-    }
+    return new Response(
+        JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V19-Error" }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    )
   }
 })
