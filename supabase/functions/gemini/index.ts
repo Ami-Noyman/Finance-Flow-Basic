@@ -41,10 +41,13 @@ serve(async (req) => {
 
     let lastError = ""
     let activeModel = "none"
+    let quotaReached = false
 
     for (const modelName of modelsToTry) {
+        if (quotaReached) break
+
         try {
-            console.log(`[Edge Function] V22 Testing: ${modelName}`)
+            console.log(`[Edge Function] V23 Testing: ${modelName}`)
             activeModel = modelName
             const model = genAI.getGenerativeModel({ 
                 model: modelName,
@@ -56,34 +59,44 @@ serve(async (req) => {
                 generationConfig: generationConfig
             })
             
-            const text = result.response.text().trim().replace(/['"`]/g, '')
+            const text = result.response.text().trim()
             return new Response(
-                JSON.stringify({ text, deploy: "V22.0", model: activeModel }),
+                JSON.stringify({ text, deploy: "V23.0", model: activeModel }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
             )
         } catch (err: any) {
-            console.warn(`[Edge Function] ${modelName} failed:`, err.message)
-            lastError += `[${modelName}: ${err.message}] `
+            const errMsg = err.message || JSON.stringify(err)
+            console.warn(`[Edge Function] ${modelName} failed:`, errMsg)
+            lastError += `[${modelName}: ${errMsg}] `
             
-            // If it's a safety error, don't keep trying others, just report it
-            if (err.message.includes("SAFETY")) {
-                throw new Error(`Safety Filter: ${err.message}`)
+            // If it's a quota error or rate limit, stop iterating to save time/quota
+            if (errMsg.includes("429") || errMsg.toLowerCase().includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+                quotaReached = true
+                break
+            }
+
+            // If it's a safety error, don't keep trying others
+            if (errMsg.includes("SAFETY")) {
+                throw new Error(`Safety Filter: ${errMsg}`)
             }
         }
     }
 
     // If we get here, everything failed
-    throw new Error(`Diagnostic Failure. Tested 5 models: ${lastError}`)
+    if (quotaReached) {
+        throw new Error("Google AI Quota reached. The free tier is exhausted. Please wait or try a new API key.")
+    }
+    throw new Error(`Service Unavailable. Errors: ${lastError}`)
 
   } catch (error: any) {
     console.error("[Edge Function] Final Crash:", error.message)
     
     let userMsg = error.message
-    let deployLabel = "V22-Error"
+    let deployLabel = "V23-Fail"
     
-    if (userMsg.includes("429") || userMsg.toLowerCase().includes("quota") || userMsg.includes("RESOURCE_EXHAUSTED")) {
-        userMsg = "Google AI Quota reached for all models (1.5, 2.0, Pro). The free tier is currently exhausted on your account. Please wait a few hours or until tomorrow."
-        deployLabel = "V22-Quota"
+    if (userMsg.toLowerCase().includes("quota") || userMsg.includes("429") || userMsg.includes("RESOURCE_EXHAUSTED")) {
+        userMsg = "Google AI Quota reached for all models (1.5, 2.0, Pro). The free tier is currently exhausted on your account. Please wait a few hours or until tomorrow. שגיאת תקשורת: מכסת השימוש בבינה המלאכותית הסתיימה להיום. יש להמתין מספר שעות או עד מחר."
+        deployLabel = "V23-Quota"
     }
 
     return new Response(
@@ -91,7 +104,7 @@ serve(async (req) => {
             error: userMsg, 
             isAIFailure: true, 
             deploy: deployLabel,
-            model: "all-failed" 
+            model: "info" 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )

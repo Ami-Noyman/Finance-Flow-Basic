@@ -13,7 +13,7 @@ export const hasValidApiKey = () => {
 
 export const getApiKey = () => "HIDDEN_IN_SUPABASE";
 
-const QUOTA_COOLDOWN_MS = 60 * 1000; // 60 seconds
+const QUOTA_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 let lastQuotaErrorTime = 0;
 
 const invokeGemini = async (contents: any[], systemInstruction?: string, responseSchema?: any) => {
@@ -61,7 +61,8 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             console.error("[AI Service] Server-side AI Error:", errorMsg);
             
             // Set cooldown if it's a quota error
-            if (errorMsg.includes("429") || errorMsg.toLowerCase().includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+            const lowerMsg = errorMsg.toLowerCase();
+            if (errorMsg.includes("429") || lowerMsg.includes("quota") || lowerMsg.includes("limit") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
                 lastQuotaErrorTime = Date.now();
             }
             throw new Error(errorMsg); // Throw the clean message from server
