@@ -28,10 +28,10 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V17.1 ROBUST: Support prompt (string) OR contents (array)
+    // V18.0 STABLE: Use gemini-1.5-flash as primary for better free-tier quotas
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash",
+        model: "gemini-1.5-flash",
         systemInstruction: systemInstruction || "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
     })
 
@@ -46,8 +46,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         text, 
-        deploy: "V17.1",
-        model: "gemini-2.0-flash"
+        deploy: "V18.0",
+        model: "gemini-1.5-flash"
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -56,20 +56,32 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error("[Edge Function] V17 Error:", error.message)
+    console.error("[Edge Function] V18 Error:", error.message)
     
-    // Fallback attempt if 2.0 fails unexpectedly
+    // Explicit 429 error return
+    if (error.message.includes("429") || error.message.includes("quota") || error.message.includes("limit")) {
+        return new Response(
+            JSON.stringify({ 
+                error: "Google AI Quota Exceeded. The free tier allows 15 requests per minute and 1,500 per day. Please try again in 1 minute.", 
+                isAIFailure: true, 
+                deploy: "V18-Quota" 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        )
+    }
+
+    // Generic Fallback attempt
     try {
         const genAI = new GoogleGenerativeAI(apiKey)
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
         const result = await model.generateContent(prompt)
         return new Response(
-            JSON.stringify({ text: result.response.text().trim(), deploy: "V17-Fallback" }),
+            JSON.stringify({ text: result.response.text().trim(), deploy: "V18-Fallback" }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
     } catch (e) {
         return new Response(
-            JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V17-Error" }),
+            JSON.stringify({ error: error.message, isAIFailure: true, deploy: "V18-Error" }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
     }

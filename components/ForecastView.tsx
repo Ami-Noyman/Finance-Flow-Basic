@@ -60,8 +60,11 @@ const parseAiError = (error: any): string => {
         if (parsed.error?.message) msg = parsed.error.message;
     } catch (e) { /* not JSON, use original */ }
 
+    if (msg.includes("Google AI Quota Exceeded")) {
+        return msg; // Use the descriptive message from the server
+    }
     if (msg.includes("Quota exceeded") || msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
-        return "הגעת למכסת הבקשות החינמית של Gemini (20 בדקה). נא להמתין כ-15 שניות ולנסות שוב.";
+        return "הגעת למכסת הבקשות של Gemini. נא להמתין כדקה ולנסות שוב.";
     }
     if (msg.includes("API_KEY_MISSING")) {
         return "מפתח ה-API (Gemini Key) חסר בהגדרות המערכת.";

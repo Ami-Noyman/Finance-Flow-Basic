@@ -52,7 +52,7 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
         }
 
         if (data?.deploy) {
-            console.log(`[AI Service] Edge Function Version: ${data.deploy} (${data.model || 'unknown'})`);
+            console.log(`[AI Service] Edge Function Version: ${data.deploy} (${data.model || 'gemini-1.5-flash'})`);
         }
 
         // Check for server-side AI failure (we returned it with 200 to bypass generic error swallow)
@@ -61,10 +61,10 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             console.error("[AI Service] Server-side AI Error:", errorMsg);
             
             // Set cooldown if it's a quota error
-            if (errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+            if (errorMsg.includes("429") || errorMsg.toLowerCase().includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
                 lastQuotaErrorTime = Date.now();
             }
-            throw new Error(`Gemini Error: ${errorMsg}`);
+            throw new Error(errorMsg); // Throw the clean message from server
         }
 
         if (data?.error) {
@@ -72,7 +72,7 @@ const invokeGemini = async (contents: any[], systemInstruction?: string, respons
             console.error("[AI Service] Gemini API Error:", errorMsg);
 
             // Set cooldown if it's a quota error
-            if (errorMsg.includes("429") || errorMsg.includes("Quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+            if (errorMsg.includes("429") || errorMsg.toLowerCase().includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
                 lastQuotaErrorTime = Date.now();
             }
             throw new Error(`Gemini Error: ${errorMsg}`);
