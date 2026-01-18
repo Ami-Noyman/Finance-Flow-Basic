@@ -28,75 +28,71 @@ serve(async (req) => {
       throw new Error("Missing prompt or contents in request body")
     }
 
-    // V21.0 FINAL ATTEMPT: Use v1beta for all (since v1 for 1.5-flash/pro is 404ing)
+    // V22.0 DIAGNOSTIC: Try everything to find a model that isn't 404 or Quota limit 0
     const genAI = new GoogleGenerativeAI(apiKey)
     
-    const tryModel = async (modelName: string) => {
-        console.log(`[Edge Function] Trying model: ${modelName} on v1beta`)
-        const model = genAI.getGenerativeModel({ 
-            model: modelName,
-            systemInstruction: systemInstruction || "You are a financial categorization assistant. Given a transaction payee/description, amount, and existing categories, return ONLY the most likely category name. If unsure, return 'General' or 'כללי'." 
-        }, { apiVersion: "v1beta" })
+    const modelsToTry = [
+        "gemini-1.5-flash",
+        "gemini-2.0-flash", // Re-trying 2.0 in case quota reset
+        "gemini-1.5-pro",
+        "gemini-1.5-flash-8b", // Smaller, often separate quota
+        "gemini-1.0-pro" // Legacy
+    ]
 
-        return await model.generateContent({
-            contents: contents || [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: generationConfig
-        })
-    }
+    let lastError = ""
+    let activeModel = "none"
 
-    let result;
-    let activeModel = "gemini-1.5-flash";
-    
-    try {
-        // Try 1: 1.5 Flash (Most likely to have quota)
-        result = await tryModel("gemini-1.5-flash")
-    } catch (err1: any) {
-        console.warn("[Edge Function] 1.5-flash failed:", err1.message)
-        
+    for (const modelName of modelsToTry) {
         try {
-            // Try 2: 2.0 Flash (Your previously working model)
-            activeModel = "gemini-2.0-flash"
-            result = await tryModel("gemini-2.0-flash")
-        } catch (err2: any) {
-            console.warn("[Edge Function] 2.0-flash failed:", err2.message)
+            console.log(`[Edge Function] V22 Testing: ${modelName}`)
+            activeModel = modelName
+            const model = genAI.getGenerativeModel({ 
+                model: modelName,
+                systemInstruction: systemInstruction || "You are a financial assistant."
+            }, { apiVersion: "v1beta" })
+
+            const result = await model.generateContent({
+                contents: contents || [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: generationConfig
+            })
             
-            // Try 3: 1.5 Pro (The "big" fallback)
-            activeModel = "gemini-1.5-pro"
-            result = await tryModel("gemini-1.5-pro")
+            const text = result.response.text().trim().replace(/['"`]/g, '')
+            return new Response(
+                JSON.stringify({ text, deploy: "V22.0", model: activeModel }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            )
+        } catch (err: any) {
+            console.warn(`[Edge Function] ${modelName} failed:`, err.message)
+            lastError += `[${modelName}: ${err.message}] `
+            
+            // If it's a safety error, don't keep trying others, just report it
+            if (err.message.includes("SAFETY")) {
+                throw new Error(`Safety Filter: ${err.message}`)
+            }
         }
     }
-    
-    const text = result.response.text().trim().replace(/['"`]/g, '')
 
-    return new Response(
-      JSON.stringify({ 
-        text, 
-        deploy: "V21.0",
-        model: activeModel
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    )
+    // If we get here, everything failed
+    throw new Error(`Diagnostic Failure. Tested 5 models: ${lastError}`)
 
   } catch (error: any) {
-    console.error("[Edge Function] Absolute Crash:", error.message)
+    console.error("[Edge Function] Final Crash:", error.message)
     
-    // Check if it's a quota issue across all models
-    if (error.message.includes("429") || error.message.toLowerCase().includes("quota") || error.message.includes("RESOURCE_EXHAUSTED")) {
-        return new Response(
-            JSON.stringify({ 
-                error: "All models (1.5, 2.0, Pro) have exhausted their free tiers. This usually resets after a few minutes or 24 hours depending on the limit hit. Please try again later.", 
-                isAIFailure: true, 
-                deploy: "V21-Quota" 
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-        )
+    let userMsg = error.message
+    let deployLabel = "V22-Error"
+    
+    if (userMsg.includes("429") || userMsg.toLowerCase().includes("quota") || userMsg.includes("RESOURCE_EXHAUSTED")) {
+        userMsg = "Google AI Quota reached for all models (1.5, 2.0, Pro). The free tier is currently exhausted on your account. Please wait a few hours or until tomorrow."
+        deployLabel = "V22-Quota"
     }
 
     return new Response(
-        JSON.stringify({ error: `Final Error: ${error.message}`, isAIFailure: true, deploy: "V21-Error" }),
+        JSON.stringify({ 
+            error: userMsg, 
+            isAIFailure: true, 
+            deploy: deployLabel,
+            model: "all-failed" 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
