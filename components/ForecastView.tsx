@@ -248,7 +248,23 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
             txByDate.get(t.date)!.push(t);
         });
 
-        for (let i = 0; i <= horizonDays; i++) {
+        // Initialize points with "Today" to match baseline (O(1) start point)
+        const todayPoint: any = {
+            date: format(today, 'yyyy-MM-dd'),
+            displayDate: 'Today',
+            balance: runningBalance,
+            checkingBalance: runningChecking
+        };
+        scenarios.forEach(s => {
+            if (s.isActive) {
+                todayPoint[`net_${s.id}`] = scenarioBalances[s.id];
+                todayPoint[`check_${s.id}`] = scenarioCheckingBalances[s.id];
+            }
+        });
+        points.push(todayPoint);
+
+        // Forecast loop starting from 1 to avoid double-counting today's transactions (already in initialBalances)
+        for (let i = 1; i <= horizonDays; i++) {
             const currentDate = addDays(today, i);
             const currentDateStr = format(currentDate, 'yyyy-MM-dd');
 
@@ -572,7 +588,10 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                     verticalAlign="top"
                                     height={50}
                                     wrapperStyle={{ paddingBottom: '20px' }}
-                                    formatter={(value, entry: any) => <span style={{ color: entry.color, fontWeight: 800, fontSize: '12px' }}>{value}</span>}
+                                    formatter={(value, entry: any) => {
+                                        const color = entry.color || entry.payload?.stroke || entry.payload?.fill || '#64748b';
+                                        return <span style={{ color, fontWeight: 800, fontSize: '12px' }}>{value}</span>;
+                                    }}
                                 />
                                 <Area type="monotone" dataKey="balance" name="Baseline Total Net" stroke="#0ea5e9" strokeWidth={4} fillOpacity={0.05} fill="#0ea5e9" />
                                 <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#f43f5e" strokeWidth={3} dot={false} strokeDasharray="3 3" />
