@@ -112,11 +112,26 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
     const activeScenario = scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
 
     const targetAccountIds = useMemo(() => {
+        const currency = selectedAccountId
+            ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
+            : (accounts[0]?.currency || 'ILS');
+
         if (selectedAccountId) return [selectedAccountId];
-        return accounts.filter(a => a.type === 'checking' || a.type === 'credit' || a.type === 'cash').map(a => a.id);
+        return accounts
+            .filter(a => a.currency === currency)
+            .filter(a => a.type === 'checking' || a.type === 'credit' || a.type === 'cash')
+            .map(a => a.id);
     }, [accounts, selectedAccountId]);
 
-    const checkingAccountIds = useMemo(() => accounts.filter(a => a.type === 'checking').map(a => a.id), [accounts]);
+    const checkingAccountIds = useMemo(() => {
+        const currency = selectedAccountId
+            ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
+            : (accounts[0]?.currency || 'ILS');
+
+        return accounts
+            .filter(a => a.currency === currency && a.type === 'checking')
+            .map(a => a.id);
+    }, [accounts, selectedAccountId]);
 
     const initialBalances = useMemo(() => {
         const today = startOfDay(new Date());
@@ -140,7 +155,9 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
         return { net, check };
     }, [transactions, accounts, targetAccountIds, checkingAccountIds]);
 
-    const displayCurrency = selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS' : 'ILS';
+    const displayCurrency = selectedAccountId
+        ? (accounts.find(a => a.id === selectedAccountId)?.currency || 'ILS')
+        : (accounts[0]?.currency || 'ILS');
 
     const getPayeeName = (r: any) => r.payee || r.description || 'Unknown Item';
 
@@ -551,9 +568,14 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                         return [formatCurrency(v, displayCurrency), `${sName}: ${typeLabel}`];
                                     }}
                                 />
-                                <Legend verticalAlign="top" height={50} wrapperStyle={{ paddingBottom: '20px' }} />
+                                <Legend
+                                    verticalAlign="top"
+                                    height={50}
+                                    wrapperStyle={{ paddingBottom: '20px' }}
+                                    formatter={(value, entry: any) => <span style={{ color: entry.color, fontWeight: 800, fontSize: '12px' }}>{value}</span>}
+                                />
                                 <Area type="monotone" dataKey="balance" name="Baseline Total Net" stroke="#0ea5e9" strokeWidth={4} fillOpacity={0.05} fill="#0ea5e9" />
-                                <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                                <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#f43f5e" strokeWidth={3} dot={false} strokeDasharray="3 3" />
                                 {scenarios.map(s => s.isActive && (
                                     <React.Fragment key={s.id}>
                                         <Line type="monotone" dataKey={`net_${s.id}`} name={`${s.name}: Total Net`} stroke={s.color} strokeWidth={3} strokeDasharray="5 5" dot={false} />
