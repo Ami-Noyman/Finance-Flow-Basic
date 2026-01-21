@@ -9,6 +9,7 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
+    console.log("[Edge Function] Handling OPTIONS preflight")
     return new Response('ok', { headers: corsHeaders })
   }
 
@@ -32,11 +33,11 @@ serve(async (req) => {
     const genAI = new GoogleGenerativeAI(apiKey)
     
     const modelsToTry = [
+        "gemini-flash-latest", // THIS IS THE WORKING ONE FOUND IN DIAGNOSTICS
         "gemini-1.5-flash",
-        "gemini-2.0-flash", // Re-trying 2.0 in case quota reset
+        "gemini-2.0-flash", 
         "gemini-1.5-pro",
-        "gemini-1.5-flash-8b", // Smaller, often separate quota
-        "gemini-1.0-pro" // Legacy
+        "gemini-1.5-flash-8b"
     ]
 
     let lastError = ""

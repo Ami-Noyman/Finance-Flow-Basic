@@ -20,7 +20,7 @@ interface ForecastViewProps {
     viewMode?: 'forecast' | 'ai';
     persistentChatMessages?: { role: 'user' | 'model'; text: string }[];
     onUpdateChatMessages?: (msgs: { role: 'user' | 'model'; text: string }[]) => void;
-    chatSessionRef?: React.MutableRefObject<Chat | null>;
+    chatSessionRef?: React.MutableRefObject<any>;
 }
 
 type ForecastPeriod = '2m' | '3m' | '6m' | '1y';
@@ -370,8 +370,9 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
             const session = chatSessionRef?.current;
             if (!session) throw new Error("Could not create AI session.");
 
-            const result = await session.sendMessage({ message: userMsg });
-            const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result.text || 'לא התקבלה תגובה מהיועץ.' }];
+            // FIX: The custom session object expects the string directly, not an object
+            const result = await session.sendMessage(userMsg);
+            const finalMessages: ChatMessage[] = [...newMessages, { role: 'model', text: result || 'לא התקבלה תגובה מהיועץ.' }];
             if (onUpdateChatMessages) onUpdateChatMessages(finalMessages);
         } catch (e: any) {
             console.error("AI Advisor Messaging Error Details:", e);

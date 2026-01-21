@@ -198,7 +198,8 @@ export const createFinancialChatSession = (transactions: Transaction[], recurrin
                 ...history,
                 { role: 'user', parts: [{ text }] }
             ];
-            return await invokeGemini(contents, systemInstruction);
+            const result = await invokeGemini(contents, systemInstruction);
+            return result; // Return string directly
         }
     };
 };
