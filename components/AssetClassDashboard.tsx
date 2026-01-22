@@ -65,22 +65,29 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
             const ownerName = acc.owner || 'General';
             if (!grouped[ownerName]) grouped[ownerName] = [];
 
-            // Calculate current balance
-            const accountVals = valuations.filter(v => v.accountId === acc.id).sort((x, y) => y.date.localeCompare(x.date));
-            const latestVal = accountVals[0]?.value;
-
-            let ledgerBalance = acc.initialBalance || 0;
-            transactions.forEach(t => {
-                if (t.accountId === acc.id) {
-                    if (t.type === TransactionType.INCOME) ledgerBalance += t.amount;
-                    else ledgerBalance -= t.amount;
-                }
-                if (t.toAccountId === acc.id) ledgerBalance += t.amount;
-            });
-
             grouped[ownerName].push({
                 ...acc,
-                currentBalance: latestVal !== undefined ? latestVal : ledgerBalance
+                currentBalance: (() => {
+                    const accountVals = valuations.filter(v => v.accountId === acc.id).sort((x, y) => x.date.localeCompare(y.date));
+                    const latestValObj = accountVals[accountVals.length - 1];
+                    const latestValAmount = latestValObj?.value;
+                    const latestValDate = latestValObj?.date || '0000-00-00';
+
+                    let balance = latestValAmount !== undefined ? latestValAmount : acc.initialBalance;
+
+                    // Add transfers made AFTER the latest valuation (or after initial balance if no valuation)
+                    transactions.forEach(t => {
+                        if (t.date > latestValDate) {
+                            if (t.accountId === acc.id && t.type === TransactionType.TRANSFER) balance -= t.amount;
+                            if (t.toAccountId === acc.id && t.type === TransactionType.TRANSFER) balance += t.amount;
+                        } else if (latestValAmount === undefined) {
+                            // If no valuation, count all transfers
+                            if (t.accountId === acc.id && t.type === TransactionType.TRANSFER) balance -= t.amount;
+                            if (t.toAccountId === acc.id && t.type === TransactionType.TRANSFER) balance += t.amount;
+                        }
+                    });
+                    return balance;
+                })()
             });
         });
 
@@ -117,25 +124,29 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
             accountsByOwner.forEach(group => {
                 let groupTotalAtPoint = 0;
                 group.accounts.forEach((acc: any) => {
+                    const accId = acc.id;
                     const accountValsAtPoint = valuations
-                        .filter(v => v.accountId === acc.id && v.date <= dateStr)
-                        .sort((x, y) => y.date.localeCompare(x.date));
+                        .filter(v => v.accountId === accId && v.date <= dateStr)
+                        .sort((x, y) => x.date.localeCompare(y.date));
 
-                    if (accountValsAtPoint.length > 0) {
-                        groupTotalAtPoint += accountValsAtPoint[0].value;
-                    } else {
-                        let bal = acc.initialBalance || 0;
-                        transactions.forEach(t => {
-                            if (t.date <= dateStr) {
-                                if (t.accountId === acc.id) {
-                                    if (t.type === TransactionType.INCOME) bal += t.amount;
-                                    else bal -= t.amount;
-                                }
-                                if (t.toAccountId === acc.id) bal += t.amount;
-                            }
-                        });
-                        groupTotalAtPoint += bal;
-                    }
+                    const latestValObj = accountValsAtPoint[accountValsAtPoint.length - 1];
+                    const latestValAmount = latestValObj?.value;
+                    const latestValDate = latestValObj?.date || '0000-00-00';
+
+                    let balance = latestValAmount !== undefined ? latestValAmount : acc.initialBalance;
+
+                    // Add transfers made AFTER the latest valuation (up to point)
+                    transactions.forEach(t => {
+                        if (t.date > latestValDate && t.date <= dateStr && t.type === TransactionType.TRANSFER) {
+                            if (t.accountId === accId) balance -= t.amount;
+                            if (t.toAccountId === accId) balance += t.amount;
+                        } else if (latestValAmount === undefined && t.date <= dateStr && t.type === TransactionType.TRANSFER) {
+                            if (t.accountId === accId) balance -= t.amount;
+                            if (t.toAccountId === accId) balance += t.amount;
+                        }
+                    });
+
+                    groupTotalAtPoint += balance;
                 });
                 dataPoint[group.owner] = groupTotalAtPoint;
             });

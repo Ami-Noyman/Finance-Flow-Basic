@@ -414,66 +414,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       </div>
 
       {/* 5. NEW ANALYTICS: CATEGORY & TOP PAYEES */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Category Expenses */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><LayoutGrid size={20} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Expense by Category</h3>
-                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{analyticsPeriod === 'month' ? 'Current Month' : 'This Year'}</p>
-              </div>
-            </div>
-            <div className="flex bg-slate-100 p-1 rounded-xl">
-              <button
-                onClick={() => setAnalyticsPeriod('month')}
-                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'month' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
-              > Month </button>
-              <button
-                onClick={() => setAnalyticsPeriod('year')}
-                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'year' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
-              > Year </button>
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-10 border-b pb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><BarChart3 size={24} /></div>
+            <div>
+              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Spending Breakdown</h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Analytics {analyticsPeriod === 'month' ? 'for Current Month' : 'for Last 12 Months'}</p>
             </div>
           </div>
-
-          <div className="flex-1 min-h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analyticsData.categories} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#6366f1">
-                  <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex bg-slate-100 p-1.5 rounded-xl shadow-inner">
+            <button
+              onClick={() => setAnalyticsPeriod('month')}
+              className={`px-6 py-2 text-xs font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'month' ? 'bg-white text-brand-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+            > Month </button>
+            <button
+              onClick={() => setAnalyticsPeriod('year')}
+              className={`px-6 py-2 text-xs font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'year' ? 'bg-white text-brand-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+            > Year </button>
           </div>
         </div>
 
-        {/* Top Payees */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Layers size={20} /></div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-800">Top 8 Payees</h3>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{analyticsPeriod === 'month' ? 'Highest spend this month' : 'Highest spend this year'}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          {/* Category Expenses */}
+          <div className="flex flex-col min-h-[400px]">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><LayoutGrid size={18} /></div>
+              <h4 className="text-lg font-black text-slate-700">Expense by Category</h4>
+            </div>
+
+            <div className="flex-1 min-h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticsData.categories} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#6366f1">
+                    <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="flex-1 min-h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analyticsData.payees} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#ec4899">
-                  <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Top Payees */}
+          <div className="flex flex-col min-h-[400px]">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl"><Layers size={18} /></div>
+              <h4 className="text-lg font-black text-slate-700">Top 8 Payees</h4>
+            </div>
+
+            <div className="flex-1 min-h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticsData.payees} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#ec4899">
+                    <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>
