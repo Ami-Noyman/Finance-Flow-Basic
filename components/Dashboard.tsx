@@ -7,7 +7,7 @@ import {
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
 import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers, BarChart3, Search } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear, endOfYear } from 'date-fns';
 import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
 import { analyzeAnomalies, hasValidApiKey } from '../services/geminiService';
 import { checkTableHealth } from '../services/storageService';
@@ -34,6 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
   const [isAiMissing, setIsAiMissing] = useState(!hasValidApiKey());
   const [dbUnhealthy, setDbUnhealthy] = useState(false);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<'month' | 'year'>('month');
 
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>(() => {
     try {
@@ -132,6 +133,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
     return { currentIncome, currentExpense, netCashFlow: currentIncome - currentExpense, incomeChange, expenseChange, netWorth };
   }, [transactions, selectedAccountId, balances]);
+
+  const analyticsData = useMemo(() => {
+    const now = new Date();
+    const start = analyticsPeriod === 'month' ? startOfMonth(now) : startOfYear(now);
+    const end = analyticsPeriod === 'month' ? endOfMonth(now) : endOfYear(now);
+
+    const catData: Record<string, number> = {};
+    const payData: Record<string, number> = {};
+
+    transactions.forEach(t => {
+      const d = parseISO(t.date);
+      if (t.type === TransactionType.EXPENSE && isWithinInterval(d, { start, end })) {
+        catData[t.category] = (catData[t.category] || 0) + t.amount;
+        const payee = t.payee || 'Unknown';
+        payData[payee] = (payData[payee] || 0) + t.amount;
+      }
+    });
+
+    return {
+      categories: Object.entries(catData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
+      payees: Object.entries(payData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8)
+    };
+  }, [transactions, analyticsPeriod]);
 
   const liquidAccountBarData = useMemo(() => {
     const liquidTypes = ['checking', 'credit', 'cash'];
@@ -389,6 +413,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         )}
       </div>
 
+      {/* 5. NEW ANALYTICS: CATEGORY & TOP PAYEES */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Category Expenses */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><LayoutGrid size={20} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">Expense by Category</h3>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{analyticsPeriod === 'month' ? 'Current Month' : 'This Year'}</p>
+              </div>
+            </div>
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setAnalyticsPeriod('month')}
+                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'month' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+              > Month </button>
+              <button
+                onClick={() => setAnalyticsPeriod('year')}
+                className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${analyticsPeriod === 'year' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+              > Year </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analyticsData.categories} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
+                <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#6366f1">
+                  <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Top Payees */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl"><Layers size={20} /></div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-800">Top 8 Payees</h3>
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{analyticsPeriod === 'month' ? 'Highest spend this month' : 'Highest spend this year'}</p>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analyticsData.payees} layout="vertical" margin={{ left: 20, right: 40, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} width={100} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatCurrency(v, displayCurrency), 'Spent']} cursor={{ fill: '#f8fafc' }} />
+                <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={20} fill="#ec4899">
+                  <LabelList dataKey="value" position="right" formatter={(v: number) => formatCurrency(v, displayCurrency)} style={{ fontSize: '9px', fontWeight: '900', fill: '#475569' }} offset={10} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
+};

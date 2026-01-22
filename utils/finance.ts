@@ -178,7 +178,8 @@ export const calculateBalanceAlerts = (
     const workingBalances = { ...currentBalances };
     const activeRecs = recurring.filter(r => r.isActive).map(r => ({
         ...r,
-        simDate: parseISO(r.nextDueDate)
+        simDate: parseISO(r.nextDueDate),
+        simProcessedCount: r.occurrencesProcessed || 0
     }));
 
     for (let i = 1; i <= 45; i++) {
@@ -198,6 +199,9 @@ export const calculateBalanceAlerts = (
         // Apply recurring
         activeRecs.forEach(r => {
             if (isSameDay(r.simDate, simDate)) {
+                // Skip if we've already hit the limit
+                if (r.totalOccurrences && r.simProcessedCount >= r.totalOccurrences) return;
+
                 const amount = getSmartAmount(r, simDate, transactions);
                 if (r.type === TransactionType.INCOME) workingBalances[r.accountId] += amount;
                 else if (r.type === TransactionType.EXPENSE) workingBalances[r.accountId] -= amount;
@@ -206,7 +210,8 @@ export const calculateBalanceAlerts = (
                     workingBalances[r.toAccountId] += amount;
                 }
 
-                // Check for violation
+                r.simProcessedCount++;
+                r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
                 if (workingBalances[r.accountId] < 0) {
                     const acc = accounts.find(a => a.id === r.accountId);
                     if (acc && (acc.type === 'checking' || acc.type === 'cash')) {

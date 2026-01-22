@@ -279,6 +279,9 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
   const filteredRecurring = useMemo(() => {
     return recurring.filter(r => {
+      // ONLY show active recurring transactions
+      if (!r.isActive) return false;
+
       const pName = getPayeeName(r).toLowerCase();
       if (searchTerm && !pName.includes(searchTerm.toLowerCase())) return false;
       if (filterCategory && r.category !== filterCategory) return false;

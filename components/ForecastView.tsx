@@ -574,12 +574,20 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="displayDate" tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }} axisLine={false} tickLine={false} interval={Math.floor(forecastData.length / 10)} />
                                 <YAxis tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(val) => formatCurrency(val, displayCurrency)} />
-                                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                                <Tooltip
+                                    contentStyle={tooltipStyle}
+                                    itemStyle={tooltipItemStyle}
+                                    labelStyle={tooltipLabelStyle}
                                     formatter={(v: number, name: string) => {
-                                        if (name === 'balance') return [formatCurrency(v, displayCurrency), 'Baseline Total Net'];
-                                        if (name === 'checkingBalance') return [formatCurrency(v, displayCurrency), 'Checking Balance (עו״ש)'];
+                                        if (name === 'balance' || name === 'Baseline Total Net') return [formatCurrency(v, displayCurrency), 'Baseline Total Net'];
+                                        if (name === 'checkingBalance' || name === 'Checking Balance (עו״ש)') return [formatCurrency(v, displayCurrency), 'Checking Balance (עו״ש)'];
+
+                                        const parts = name.split(': ');
+                                        if (parts.length > 1) return [formatCurrency(v, displayCurrency), name];
+
                                         const [type, scenarioId] = name.split('_');
-                                        const sName = scenarios.find(s => s.id === scenarioId)?.name || 'Unknown';
+                                        const s = scenarios.find(s => s.id === scenarioId);
+                                        const sName = s?.name || 'Unknown';
                                         const typeLabel = type === 'net' ? 'Total Net' : 'Checking (עו״ש)';
                                         return [formatCurrency(v, displayCurrency), `${sName}: ${typeLabel}`];
                                     }}
