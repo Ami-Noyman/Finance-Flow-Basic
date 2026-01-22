@@ -152,26 +152,54 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
         const accValuations = valuations.filter(v => v.accountId === accId).sort((a, b) => a.date.localeCompare(b.date));
         const accTransactions = transactions.filter(t => t.accountId === accId || t.toAccountId === accId);
 
-        const latestValuation = accValuations[accValuations.length - 1]?.value;
+        const latestValuationObj = accValuations[accValuations.length - 1];
+        const latestValuationAmount = latestValuationObj?.value;
+        const latestValDate = latestValuationObj?.date || '0000-00-00';
 
         let costBasis = activeAccount.initialBalance;
-        accTransactions.forEach(t => {
+        let netTransfersSinceValuation = 0;
+
+        accTransactions.forEach((t: Transaction) => {
             if (t.type === TransactionType.TRANSFER) {
-                if (t.toAccountId === accId) costBasis += t.amount;
-                else if (t.accountId === accId) costBasis -= t.amount;
+                const amount = (t.toAccountId === accId) ? t.amount : -t.amount;
+                costBasis += amount;
+                if (t.date > latestValDate) {
+                    netTransfersSinceValuation += amount;
+                }
             }
         });
 
-        const currentVal = latestValuation !== undefined ? latestValuation : costBasis;
+        const currentVal = latestValuationAmount !== undefined
+            ? latestValuationAmount + netTransfersSinceValuation
+            : costBasis;
+
         const totalProfit = currentVal - costBasis;
         const profitPercent = costBasis !== 0 ? (totalProfit / costBasis) * 100 : 0;
 
         const startOfThisYear = format(startOfYear(new Date()), 'yyyy-MM-dd');
-        const valAtStartOfYear = accValuations.find(v => v.date <= startOfThisYear)?.value || activeAccount.initialBalance;
-        const netDepositsYTD = accTransactions.filter(t => t.date >= startOfThisYear && t.type === TransactionType.TRANSFER)
-            .reduce((sum, t) => t.toAccountId === accId ? sum + t.amount : sum - t.amount, 0);
-        const profitYTD = currentVal - (valAtStartOfYear + netDepositsYTD);
-        const profitYTDPercent = (valAtStartOfYear + netDepositsYTD) !== 0 ? (profitYTD / (valAtStartOfYear + netDepositsYTD)) * 100 : 0;
+
+        // Performance YTD: (CurrentVal) - (Valuation @ StartOfYear + NetTransfers YTD)
+        // Find valuation exactly at start of year, or latest one before it
+        const valAtStartOfYearObj = [...accValuations].reverse().find(v => v.date <= startOfThisYear);
+        const valAtStartOfYearDate = valAtStartOfYearObj?.date || '0000-00-00';
+        const valAtStartOfYearAmount = valAtStartOfYearObj?.value !== undefined ? valAtStartOfYearObj.value : activeAccount.initialBalance;
+
+        // Transfers before start of year but after that specific valuation (if any)
+        let transfersToAdjustStart = 0;
+        accTransactions.forEach((t: Transaction) => {
+            if (t.type === TransactionType.TRANSFER && t.date > valAtStartOfYearDate && t.date <= startOfThisYear) {
+                transfersToAdjustStart += (t.toAccountId === accId ? t.amount : -t.amount);
+            }
+        });
+
+        const adjustedValueAtStartOfYear = valAtStartOfYearAmount + transfersToAdjustStart;
+
+        const netDepositsYTD = accTransactions
+            .filter((t: Transaction) => t.date > startOfThisYear && t.type === TransactionType.TRANSFER)
+            .reduce((sum: number, t: Transaction) => t.toAccountId === accId ? sum + t.amount : sum - t.amount, 0);
+
+        const profitYTD = currentVal - (adjustedValueAtStartOfYear + netDepositsYTD);
+        const profitYTDPercent = (adjustedValueAtStartOfYear + netDepositsYTD) !== 0 ? (profitYTD / (adjustedValueAtStartOfYear + netDepositsYTD)) * 100 : 0;
 
         return {
             currentVal,
@@ -206,11 +234,25 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
                 }
             });
 
-            const valuationAtPoint = [...accValuations].reverse().find(v => v.date <= dateStr)?.value;
+            const valuationAtPointObj = [...accValuations].reverse().find(v => v.date <= dateStr);
+            const valuationAmt = valuationAtPointObj?.value;
+            const valuationDate = valuationAtPointObj?.date || '0000-00-00';
+
+            // Transfers since that specific valuation point up to dateStr
+            let transfersSinceValuationAtPoint = 0;
+            accTransactions.forEach((t: Transaction) => {
+                if (t.type === TransactionType.TRANSFER && t.date > valuationDate && t.date <= dateStr) {
+                    transfersSinceValuationAtPoint += (t.toAccountId === accId ? t.amount : -t.amount);
+                }
+            });
+
+            const marketValueAtPoint = valuationAmt !== undefined
+                ? valuationAmt + transfersSinceValuationAtPoint
+                : basisAtPoint;
 
             return {
                 date: format(m, 'MMM yy'),
-                marketValue: valuationAtPoint !== undefined ? valuationAtPoint : basisAtPoint,
+                marketValue: marketValueAtPoint,
                 costBasis: basisAtPoint
             };
         });
@@ -329,7 +371,7 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
                                     <p className="text-sm font-bold">No valuation history</p>
                                 </div>
                             ) : (
-                                accountMetrics.history.map((v, i) => {
+                                accountMetrics.history.map((v: Valuation, i: number) => {
                                     const nextV = accountMetrics.history[i + 1];
                                     const diff = nextV ? v.value - nextV.value : 0;
                                     const diffPct = nextV ? (diff / nextV.value) * 100 : 0;
@@ -471,8 +513,8 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
                                 key={group.owner}
                                 onClick={() => toggleOwnerVisibility(group.owner)}
                                 className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all flex items-center gap-2 border ${visibleOwners.includes(group.owner)
-                                        ? 'bg-white border-slate-200 text-slate-800 shadow-sm'
-                                        : 'bg-transparent border-transparent text-slate-400 opacity-60 hover:opacity-100'
+                                    ? 'bg-white border-slate-200 text-slate-800 shadow-sm'
+                                    : 'bg-transparent border-transparent text-slate-400 opacity-60 hover:opacity-100'
                                     }`}
                             >
                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: visibleOwners.includes(group.owner) ? group.color : '#cbd5e1' }} />

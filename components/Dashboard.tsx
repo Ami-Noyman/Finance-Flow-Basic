@@ -136,8 +136,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
 
   const analyticsData = useMemo(() => {
     const now = new Date();
-    const start = analyticsPeriod === 'month' ? startOfMonth(now) : startOfYear(now);
-    const end = analyticsPeriod === 'month' ? endOfMonth(now) : endOfYear(now);
+    const start = analyticsPeriod === 'month' ? startOfMonth(now) : subMonths(startOfMonth(now), 11);
+    const end = analyticsPeriod === 'month' ? endOfMonth(now) : endOfMonth(now);
 
     const catData: Record<string, number> = {};
     const payData: Record<string, number> = {};

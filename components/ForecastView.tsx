@@ -602,7 +602,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({
                                     }}
                                 />
                                 <Area type="monotone" dataKey="balance" name="Baseline Total Net" stroke="#0ea5e9" strokeWidth={4} fillOpacity={0.05} fill="#0ea5e9" />
-                                <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#f43f5e" strokeWidth={3} dot={false} strokeDasharray="3 3" />
+                                <Line type="monotone" dataKey="checkingBalance" name="Checking Balance (עו״ש)" stroke="#3b82f6" strokeWidth={3} dot={false} strokeDasharray="3 3" />
                                 {scenarios.map(s => s.isActive && (
                                     <React.Fragment key={s.id}>
                                         <Line type="monotone" dataKey={`net_${s.id}`} name={`${s.name}: Total Net`} stroke={s.color} strokeWidth={3} strokeDasharray="5 5" dot={false} />
