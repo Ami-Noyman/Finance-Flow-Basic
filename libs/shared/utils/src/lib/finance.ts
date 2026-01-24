@@ -1,5 +1,5 @@
 
-import { RecurringTransaction, Transaction, Frequency, AmountType, SmartCategoryBudget, Account, BalanceAlert, TransactionType } from '../types';
+import { RecurringTransaction, Transaction, Frequency, AmountType, SmartCategoryBudget, Account, BalanceAlert, TransactionType, Valuation, FinancialGoal, TransactionRule } from '@useful-apps/shared/types';
 import { addDays, addWeeks, addMonths, addYears, parseISO, startOfMonth, endOfMonth, isWithinInterval, format, subMonths, differenceInCalendarMonths, isBefore, isSameDay, startOfDay } from 'date-fns';
 
 /**

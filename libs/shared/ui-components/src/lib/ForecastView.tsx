@@ -2,11 +2,11 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ComposedChart, BarChart, Bar, LabelList } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, Frequency } from '@useful-apps/shared/types';
-import { generateFinancialInsight, createFinancialChatSession, hasValidApiKey } from '@useful-apps/shared/servicesgeminiService';
+import { generateFinancialInsight, createFinancialChatSession, hasValidApiKey } from '@useful-apps/shared/services';
 import { Sparkles, Activity, MessageSquare, Send, Bot, User, Plus, Trash2, Sliders, PlayCircle, Settings2, Repeat, Target, Info, Calendar, Loader, CreditCard, AlertCircle, Clock } from 'lucide-react';
 import { addDays, format, parseISO, startOfDay, isSameDay, startOfMonth, endOfMonth, differenceInDays, addMonths, isBefore, addWeeks, addYears } from 'date-fns';
-import { formatCurrency } from '@useful-apps/shared/utilscurrency';
-import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget } from '@useful-apps/shared/utilsfinance';
+import { formatCurrency } from '@useful-apps/shared/utils';
+import { calculateNextDate, getSmartAmount, getEffectiveCategoryBudget } from '@useful-apps/shared/utils';
 import { Chat } from "@google/genai";
 
 interface ForecastViewProps {

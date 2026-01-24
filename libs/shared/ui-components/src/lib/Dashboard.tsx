@@ -6,11 +6,11 @@ import {
 } from 'recharts';
 import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '@useful-apps/shared/types';
 import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers, BarChart3, Search } from 'lucide-react';
-import { formatCurrency } from '@useful-apps/shared/utilscurrency';
+import { formatCurrency } from '@useful-apps/shared/utils';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear, endOfYear } from 'date-fns';
-import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '@useful-apps/shared/utilsfinance';
-import { analyzeAnomalies, hasValidApiKey } from '@useful-apps/shared/servicesgeminiService';
-import { checkTableHealth } from '@useful-apps/shared/servicesstorageService';
+import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '@useful-apps/shared/utils';
+import { analyzeAnomalies, hasValidApiKey } from '@useful-apps/shared/services';
+import { checkTableHealth } from '@useful-apps/shared/services';
 
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
 const AI_ANOMALIES_CACHE_KEY = 'financeflow_ai_anomalies';

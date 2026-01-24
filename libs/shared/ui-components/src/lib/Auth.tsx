@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { initSupabase, isConfigured } from '@useful-apps/shared/servicessupabaseClient';
+import { initSupabase, isConfigured } from '@useful-apps/shared/services';
 import { AlertCircle, Database, Loader, Mail, Send, Eye, EyeOff, KeyRound, ArrowLeft, LogIn } from 'lucide-react';
 
 interface AuthProps {

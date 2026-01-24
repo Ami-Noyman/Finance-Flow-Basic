@@ -1,12 +1,12 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Account, Transaction, RecurringTransaction, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '@useful-apps/shared/types';
-import { CURRENCIES, formatCurrency } from '@useful-apps/shared/utilscurrency';
+import { CURRENCIES, formatCurrency } from '@useful-apps/shared/utils';
 import { Plus, Trash2, Edit2, Check, X, Wallet, Tag, Info, AlertOctagon, RefreshCw, Calendar, ArrowRightLeft, Download, Upload, Database, Save, Play, UserMinus, Loader, AlertTriangle, ListFilter, User, Terminal, Copy, FileJson, CheckCircle2, SearchCode, LifeBuoy, Zap, Server, AlertCircle, ShieldCheck, Globe, XCircle, Activity, LayoutGrid, Target as TargetIcon, Brain, Sparkles, ExternalLink, Key, HardDrive } from 'lucide-react';
-import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection, fetchRules, saveRule, deleteRule } from '@useful-apps/shared/servicesstorageService';
-import { initSupabase, getDebugInfo, getSupabaseConfig } from '@useful-apps/shared/servicessupabaseClient';
-import { sortAccounts } from '@useful-apps/shared/utilsfinance';
-import { getApiKey } from '@useful-apps/shared/servicesgeminiService';
+import { clearAllUserData, fetchAccountSubTypes, createAccountSubType, fetchCategoryBudgets, fetchValuations, batchCreateCategoryBudgets, fetchGoals, checkTableHealth, testConnection, fetchRules, saveRule, deleteRule } from '@useful-apps/shared/services';
+import { initSupabase, getDebugInfo, getSupabaseConfig } from '@useful-apps/shared/services';
+import { sortAccounts } from '@useful-apps/shared/utils';
+import { getApiKey } from '@useful-apps/shared/services';
 
 interface SettingsProps {
   accounts: Account[];

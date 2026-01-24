@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { FinancialGoal, Account } from '@useful-apps/shared/types';
 import { Plus, Target, Calendar, Trash2, Edit2, Info, CheckCircle, Wallet, X, Save, AlertCircle, Server } from 'lucide-react';
-import { formatCurrency } from '@useful-apps/shared/utilscurrency';
-import { checkTableHealth } from '@useful-apps/shared/servicesstorageService';
+import { formatCurrency } from '@useful-apps/shared/utils';
+import { checkTableHealth } from '@useful-apps/shared/services';
 
 interface GoalsManagerProps {
   goals: FinancialGoal[];

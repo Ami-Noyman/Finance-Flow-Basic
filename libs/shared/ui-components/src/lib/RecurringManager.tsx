@@ -2,10 +2,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { RecurringTransaction, TransactionType, Frequency, Account, AmountType, Transaction, SmartCategoryBudget, TransactionRule } from '@useful-apps/shared/types';
 import { Plus, Trash2, Calendar, Repeat, Edit2, Info, Clock, AlertCircle, X, CheckCircle, BrainCircuit, Target, StickyNote, PieChart as PieIcon, BarChart3, TrendingUp, ArrowRightLeft, Play, Filter, RotateCcw, AlertTriangle, ArrowRight, Save, RefreshCw } from 'lucide-react';
-import { categorizeTransaction } from '@useful-apps/shared/servicesgeminiService';
-import { formatCurrency } from '@useful-apps/shared/utilscurrency';
+import { categorizeTransaction } from '@useful-apps/shared/services';
+import { formatCurrency } from '@useful-apps/shared/utils';
 import { parseISO, isBefore, startOfDay, isValid, format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { getEffectiveCategoryBudget, calculateCategoryMonthlyAverage, sortAccounts, calculateRemainingCommittedSpend } from '@useful-apps/shared/utilsfinance';
+import { getEffectiveCategoryBudget, calculateCategoryMonthlyAverage, sortAccounts, calculateRemainingCommittedSpend } from '@useful-apps/shared/utils';
 
 interface RecurringManagerProps {
   recurring: RecurringTransaction[];

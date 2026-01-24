@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, List, Repeat, TrendingUp, PieChart, Settings as SettingsIcon, PiggyBank, ShieldCheck, BrainCircuit, CreditCard, Target, AlertCircle } from 'lucide-react';
-import { checkTableHealth } from '@useful-apps/shared/servicesstorageService';
+import { checkTableHealth } from '@useful-apps/shared/services';
 
 interface SidebarProps {
   activeTab: string;
