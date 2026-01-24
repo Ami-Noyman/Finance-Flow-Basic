@@ -18,6 +18,7 @@
         "serve": {
             "executor": "@nx/vite:dev-server",
             "options": {
+                "root": "apps/finance-flow",
                 "buildTarget": "finance-flow:build",
                 "configFile": "apps/finance-flow/vite.config.ts"
             }
