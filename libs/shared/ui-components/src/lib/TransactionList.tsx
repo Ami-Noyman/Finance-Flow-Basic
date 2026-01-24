@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Transaction, TransactionType, Account, TransactionRule } from '../types';
+import { Transaction, TransactionType, Account, TransactionRule } from '@useful-apps/shared/types';
 import { Plus, Trash2, Search, ArrowUpCircle, ArrowDownCircle, Edit2, ArrowRightLeft, ArrowRight, CheckSquare, Square, Filter, X, Calendar, DollarSign, Repeat, StickyNote, RotateCcw, Zap, RefreshCw, ChevronDown } from 'lucide-react';
-import { categorizeTransaction } from '../services/geminiService';
-import { formatCurrency } from '../utils/currency';
+import { categorizeTransaction } from '@useful-apps/shared/servicesgeminiService';
+import { formatCurrency } from '@useful-apps/shared/utilscurrency';
 import { format, subMonths, startOfMonth, parseISO } from 'date-fns';
-import { sortAccounts } from '../utils/finance';
+import { sortAccounts } from '@useful-apps/shared/utilsfinance';
 
 interface TransactionListProps {
   transactions: Transaction[];

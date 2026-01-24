@@ -4,13 +4,13 @@ import {
   BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, ReferenceLine, LabelList, AreaChart, Area
 } from 'recharts';
-import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '../types';
+import { Transaction, TransactionType, Account, RecurringTransaction, SmartCategoryBudget, FinancialGoal, BalanceAlert } from '@useful-apps/shared/types';
 import { TrendingUp, TrendingDown, Activity, Wallet, Zap, Info, AlertCircle, Target, Sparkles, AlertTriangle, ArrowRight, X, Database, Server, RefreshCw, LayoutGrid, Layers, BarChart3, Search } from 'lucide-react';
-import { formatCurrency } from '../utils/currency';
+import { formatCurrency } from '@useful-apps/shared/utilscurrency';
 import { addDays, format, parseISO, startOfDay, subDays, isSameDay, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear, endOfYear } from 'date-fns';
-import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '../utils/finance';
-import { analyzeAnomalies, hasValidApiKey } from '../services/geminiService';
-import { checkTableHealth } from '../services/storageService';
+import { calculateNextDate, getSmartAmount, sortAccounts, calculateBalanceAlerts } from '@useful-apps/shared/utilsfinance';
+import { analyzeAnomalies, hasValidApiKey } from '@useful-apps/shared/servicesgeminiService';
+import { checkTableHealth } from '@useful-apps/shared/servicesstorageService';
 
 const DISMISSED_ALERTS_KEY = 'financeflow_dismissed_alerts';
 const AI_ANOMALIES_CACHE_KEY = 'financeflow_ai_anomalies';

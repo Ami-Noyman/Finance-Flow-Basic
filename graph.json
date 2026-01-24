@@ -1,0 +1,211 @@
+{
+  "graph": {
+    "nodes": {
+      "ui-components": {
+        "name": "ui-components",
+        "type": "lib",
+        "data": {
+          "root": "libs/shared/ui-components",
+          "name": "ui-components",
+          "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "libs/shared/ui-components/src",
+          "projectType": "library",
+          "tags": [],
+          "targets": {},
+          "implicitDependencies": []
+        }
+      },
+      "services": {
+        "name": "services",
+        "type": "lib",
+        "data": {
+          "root": "libs/shared/services",
+          "name": "services",
+          "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "libs/shared/services/src",
+          "projectType": "library",
+          "tags": [],
+          "targets": {},
+          "implicitDependencies": []
+        }
+      },
+      "finance-flow": {
+        "name": "finance-flow",
+        "type": "app",
+        "data": {
+          "root": "apps/finance-flow",
+          "name": "finance-flow",
+          "$schema": "../../node_modules/nx/schemas/project-schema.json",
+          "projectType": "application",
+          "sourceRoot": "apps/finance-flow/src",
+          "targets": {
+            "build": {
+              "executor": "@nx/vite:build",
+              "outputs": [
+                "{options.outputPath}"
+              ],
+              "options": {
+                "outputPath": "dist/apps/finance-flow",
+                "configFile": "apps/finance-flow/vite.config.ts"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve": {
+              "executor": "@nx/vite:dev-server",
+              "options": {
+                "buildTarget": "finance-flow:build",
+                "configFile": "apps/finance-flow/vite.config.ts"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "continuous": true
+            },
+            "preview": {
+              "executor": "@nx/vite:preview",
+              "options": {
+                "buildTarget": "finance-flow:build"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": [],
+          "tags": []
+        }
+      },
+      "types": {
+        "name": "types",
+        "type": "lib",
+        "data": {
+          "root": "libs/shared/types",
+          "name": "types",
+          "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "libs/shared/types/src",
+          "projectType": "library",
+          "tags": [],
+          "targets": {},
+          "implicitDependencies": []
+        }
+      },
+      "utils": {
+        "name": "utils",
+        "type": "lib",
+        "data": {
+          "root": "libs/shared/utils",
+          "name": "utils",
+          "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "libs/shared/utils/src",
+          "projectType": "library",
+          "tags": [],
+          "targets": {},
+          "implicitDependencies": []
+        }
+      },
+      "finance-flow-workspace": {
+        "name": "finance-flow-workspace",
+        "type": "app",
+        "data": {
+          "root": ".",
+          "name": "finance-flow-workspace",
+          "tags": [
+            "npm:private"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": [
+                "dev",
+                "build",
+                "preview"
+              ]
+            },
+            "js": {
+              "packageName": "finance-flow-workspace",
+              "packageVersion": "1.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "vite",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "tsc && vite build",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "preview": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "preview"
+              },
+              "metadata": {
+                "scriptContent": "vite preview",
+                "runCommand": "npm run preview"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      }
+    },
+    "dependencies": {
+      "ui-components": [
+        {
+          "source": "ui-components",
+          "target": "types",
+          "type": "static"
+        },
+        {
+          "source": "ui-components",
+          "target": "utils",
+          "type": "static"
+        }
+      ],
+      "services": [],
+      "finance-flow": [
+        {
+          "source": "finance-flow",
+          "target": "ui-components",
+          "type": "static"
+        },
+        {
+          "source": "finance-flow",
+          "target": "types",
+          "type": "static"
+        },
+        {
+          "source": "finance-flow",
+          "target": "services",
+          "type": "static"
+        },
+        {
+          "source": "finance-flow",
+          "target": "utils",
+          "type": "static"
+        }
+      ],
+      "types": [],
+      "utils": [],
+      "finance-flow-workspace": []
+    }
+  }
+}

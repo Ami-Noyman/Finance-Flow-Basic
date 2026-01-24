@@ -1,24 +1,15 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { TransactionList } from './components/TransactionList';
-import { RecurringManager } from './components/RecurringManager';
-import { ForecastView } from './components/ForecastView';
-import { GoalsManager } from './components/GoalsManager';
-import { Settings } from './components/Settings';
-import { AssetClassDashboard } from './components/AssetClassDashboard';
-import { Auth } from './components/Auth';
-import { HelpPanel } from './components/HelpPanel';
-import { Transaction, RecurringTransaction, Account, TransactionType, Frequency, AmountType, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from './types';
+import { Sidebar, Dashboard, TransactionList, RecurringManager, ForecastView, GoalsManager, Settings, AssetClassDashboard, Auth, HelpPanel } from '@useful-apps/shared/ui-components';
+import { Transaction, RecurringTransaction, Account, TransactionType, Frequency, AmountType, SmartCategoryBudget, Valuation, FinancialGoal, TransactionRule } from '@useful-apps/shared/types';
 import {
   fetchTransactions, createAccount as saveAccountToDb, batchCreateAccounts, updateAccountsLinks, fetchAccounts, fetchRecurring, createRecurring, batchCreateRecurring, fetchCategories, createCategory, batchCreateCategories, deleteAccount as deleteAccountFromDb, deleteRecurring, deleteTransaction as deleteTx, clearAllUserData, batchCreateTransactions,
   fetchCategoryBudgets, batchCreateCategoryBudgets, saveCategoryBudget, deleteCategoryBudget, createTransaction, fetchValuations, batchCreateValuations, saveValuation, deleteValuation, createAccountSubType, batchCreateAccountSubTypes,
-  fetchGoals, saveGoal, deleteGoal, batchCreateGoals, fetchRules, saveRule, deleteRule
-} from './services/storageService';
-import { initSupabase, isConfigured } from './services/supabaseClient';
+  fetchGoals, saveGoal, deleteGoal, batchCreateGoals, fetchRules, saveRule, deleteRule,
+  initSupabase, isConfigured
+} from '@useful-apps/shared/services';
 import { ChevronDown, PiggyBank, ShieldCheck, LogOut, HelpCircle, Loader, CreditCard, Target, TrendingUp, RefreshCw, Zap } from 'lucide-react';
-import { calculateNextDate, getSmartAmount, sortAccounts } from './utils/finance';
+import { calculateNextDate, getSmartAmount, sortAccounts } from '@useful-apps/shared/utils';
 import { parseISO, format, startOfDay, isBefore, isSameDay, subMonths } from 'date-fns';
 import { Chat } from "@google/genai";
 
