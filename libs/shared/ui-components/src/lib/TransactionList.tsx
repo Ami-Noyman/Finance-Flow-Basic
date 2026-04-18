@@ -219,34 +219,35 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown';
   const getCurrency = (id: string) => accounts.find(a => a.id === id)?.currency || 'ILS';
 
-  // Running balance map: for single-account view, compute the cumulative account
-  // balance after every transaction using the full (unfiltered) history.
-  // Key = transaction id, Value = account balance AFTER that transaction.
+  // Running balance map: walk ALL transactions chronologically and track the
+  // cumulative balance of EVERY account simultaneously.
+  // Key = transaction id, Value = balance of that transaction's source account AFTER it is applied.
   const runningBalanceMap = useMemo(() => {
-    if (!activeAccountId) return new Map<string, number>();
-    const account = accounts.find(a => a.id === activeAccountId);
-    if (!account) return new Map<string, number>();
+    if (accounts.length === 0) return new Map<string, number>();
 
-    // All transactions that touch this account, chronological order
-    const accountTxs = [...transactions]
-      .filter(t => t.accountId === activeAccountId || t.toAccountId === activeAccountId)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    // Start each account at its initialBalance
+    const balances: Record<string, number> = {};
+    accounts.forEach(a => { balances[a.id] = a.initialBalance; });
 
-    let balance = account.initialBalance;
+    // Walk ALL transactions in chronological order
+    const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
     const map = new Map<string, number>();
-    accountTxs.forEach(t => {
-      if (t.type === TransactionType.INCOME && t.accountId === activeAccountId) {
-        balance += t.amount;
-      } else if (t.type === TransactionType.EXPENSE && t.accountId === activeAccountId) {
-        balance -= t.amount;
+
+    sorted.forEach(t => {
+      if (t.type === TransactionType.INCOME) {
+        balances[t.accountId] = (balances[t.accountId] ?? 0) + t.amount;
+      } else if (t.type === TransactionType.EXPENSE) {
+        balances[t.accountId] = (balances[t.accountId] ?? 0) - t.amount;
       } else if (t.type === TransactionType.TRANSFER) {
-        if (t.accountId === activeAccountId)   balance -= t.amount;
-        if (t.toAccountId === activeAccountId) balance += t.amount;
+        balances[t.accountId] = (balances[t.accountId] ?? 0) - t.amount;
+        if (t.toAccountId) balances[t.toAccountId] = (balances[t.toAccountId] ?? 0) + t.amount;
       }
-      map.set(t.id, balance);
+      // Record the source account's balance after this transaction
+      map.set(t.id, balances[t.accountId]);
     });
+
     return map;
-  }, [activeAccountId, accounts, transactions]);
+  }, [accounts, transactions]);
 
   const openEdit = (t: Transaction) => {
     setEditingId(t.id);
@@ -352,7 +353,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Payee</th>
             <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Category</th>
             <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Amount</th>
-            {activeAccountId && <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Balance</th>}
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Acc. Balance</th>
             <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Actions</th>
           </tr></thead>
           <tbody className="divide-y divide-gray-100">
@@ -368,13 +369,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   <td className={`p-4 text-sm font-black text-right ${t.type === 'income' ? 'text-green-600' : (t.type === 'transfer' ? 'text-blue-600' : 'text-red-600')}`}>
                     {t.type === 'income' ? '+' : t.type === 'transfer' ? '⇄ ' : '-'}{formatCurrency(t.amount, getCurrency(t.accountId))}
                   </td>
-                  {activeAccountId && (
-                    <td className={`p-4 text-xs font-black text-right tabular-nums ${
-                      runningBal === undefined ? 'text-gray-300' : runningBal >= 0 ? 'text-slate-700' : 'text-red-600'
-                    }`}>
-                      {runningBal !== undefined ? formatCurrency(runningBal, getCurrency(activeAccountId)) : '—'}
-                    </td>
-                  )}
+                  <td className={`p-4 text-xs font-black text-right tabular-nums ${
+                    runningBal === undefined ? 'text-gray-300' : runningBal >= 0 ? 'text-slate-700' : 'text-red-600'
+                  }`}>
+                    {runningBal !== undefined ? formatCurrency(runningBal, getCurrency(t.accountId)) : '—'}
+                  </td>
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => openEdit(t)} className="p-1.5 text-gray-400 hover:text-brand-600"><Edit2 size={16} /></button>
