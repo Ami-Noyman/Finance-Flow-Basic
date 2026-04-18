@@ -75,14 +75,13 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
 
                     let balance = latestValAmount !== undefined ? latestValAmount : acc.initialBalance;
 
-                    // Add transfers made AFTER the latest valuation (or after initial balance if no valuation)
+                    // Add transactions made AFTER the latest valuation (or after initial balance if no valuation)
                     transactions.forEach(t => {
-                        if (t.date > latestValDate) {
-                            if (t.accountId === acc.id && t.type === TransactionType.TRANSFER) balance -= t.amount;
-                            if (t.toAccountId === acc.id && t.type === TransactionType.TRANSFER) balance += t.amount;
-                        } else if (latestValAmount === undefined) {
-                            // If no valuation, count all transfers
-                            if (t.accountId === acc.id && t.type === TransactionType.TRANSFER) balance -= t.amount;
+                        if (t.date > latestValDate || latestValAmount === undefined) {
+                            if (t.accountId === acc.id) {
+                                if (t.type === TransactionType.INCOME) balance += t.amount;
+                                else balance -= t.amount; // EXPENSE and TRANSFER OUT
+                            }
                             if (t.toAccountId === acc.id && t.type === TransactionType.TRANSFER) balance += t.amount;
                         }
                     });
@@ -135,14 +134,14 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
 
                     let balance = latestValAmount !== undefined ? latestValAmount : acc.initialBalance;
 
-                    // Add transfers made AFTER the latest valuation (up to point)
+                    // Add transactions made AFTER the latest valuation (up to point)
                     transactions.forEach(t => {
-                        if (t.date > latestValDate && t.date <= dateStr && t.type === TransactionType.TRANSFER) {
-                            if (t.accountId === accId) balance -= t.amount;
-                            if (t.toAccountId === accId) balance += t.amount;
-                        } else if (latestValAmount === undefined && t.date <= dateStr && t.type === TransactionType.TRANSFER) {
-                            if (t.accountId === accId) balance -= t.amount;
-                            if (t.toAccountId === accId) balance += t.amount;
+                        if (t.date <= dateStr && (t.date > latestValDate || latestValAmount === undefined)) {
+                            if (t.accountId === accId) {
+                                if (t.type === TransactionType.INCOME) balance += t.amount;
+                                else balance -= t.amount;
+                            }
+                            if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) balance += t.amount;
                         }
                     });
 
@@ -171,12 +170,16 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
         let netTransfersSinceValuation = 0;
 
         accTransactions.forEach((t: Transaction) => {
-            if (t.type === TransactionType.TRANSFER) {
-                const amount = (t.toAccountId === accId) ? t.amount : -t.amount;
-                costBasis += amount;
-                if (t.date > latestValDate) {
-                    netTransfersSinceValuation += amount;
-                }
+            let change = 0;
+            if (t.accountId === accId) {
+                change = (t.type === TransactionType.INCOME) ? t.amount : -t.amount;
+            } else if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) {
+                change = t.amount;
+            }
+            
+            costBasis += change;
+            if (t.date > latestValDate) {
+                netTransfersSinceValuation += change;
             }
         });
 
@@ -195,19 +198,25 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
         const valAtStartOfYearDate = valAtStartOfYearObj?.date || '0000-00-00';
         const valAtStartOfYearAmount = valAtStartOfYearObj?.value !== undefined ? valAtStartOfYearObj.value : activeAccount.initialBalance;
 
-        // Transfers before start of year but after that specific valuation (if any)
+        // Transactions before start of year but after that specific valuation (if any)
         let transfersToAdjustStart = 0;
         accTransactions.forEach((t: Transaction) => {
-            if (t.type === TransactionType.TRANSFER && t.date > valAtStartOfYearDate && t.date <= startOfThisYear) {
-                transfersToAdjustStart += (t.toAccountId === accId ? t.amount : -t.amount);
+            if (t.date > valAtStartOfYearDate && t.date <= startOfThisYear) {
+                if (t.accountId === accId) transfersToAdjustStart += (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) transfersToAdjustStart += t.amount;
             }
         });
 
         const adjustedValueAtStartOfYear = valAtStartOfYearAmount + transfersToAdjustStart;
 
         const netDepositsYTD = accTransactions
-            .filter((t: Transaction) => t.date > startOfThisYear && t.type === TransactionType.TRANSFER)
-            .reduce((sum: number, t: Transaction) => t.toAccountId === accId ? sum + t.amount : sum - t.amount, 0);
+            .filter((t: Transaction) => t.date > startOfThisYear)
+            .reduce((sum: number, t: Transaction) => {
+                let change = 0;
+                if (t.accountId === accId) change = (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) change = t.amount;
+                return sum + change;
+            }, 0);
 
         const profitYTD = currentVal - (adjustedValueAtStartOfYear + netDepositsYTD);
         const profitYTDPercent = (adjustedValueAtStartOfYear + netDepositsYTD) !== 0 ? (profitYTD / (adjustedValueAtStartOfYear + netDepositsYTD)) * 100 : 0;
@@ -239,9 +248,9 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
 
             let basisAtPoint = activeAccount.initialBalance;
             accTransactions.forEach(t => {
-                if (t.date <= dateStr && t.type === TransactionType.TRANSFER) {
-                    if (t.toAccountId === accId) basisAtPoint += t.amount;
-                    else if (t.accountId === accId) basisAtPoint -= t.amount;
+                if (t.date <= dateStr) {
+                    if (t.accountId === accId) basisAtPoint += (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                    if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) basisAtPoint += t.amount;
                 }
             });
 
@@ -249,11 +258,12 @@ export const AssetClassDashboard: React.FC<AssetClassDashboardProps> = ({
             const valuationAmt = valuationAtPointObj?.value;
             const valuationDate = valuationAtPointObj?.date || '0000-00-00';
 
-            // Transfers since that specific valuation point up to dateStr
+            // Transactions since that specific valuation point up to dateStr
             let transfersSinceValuationAtPoint = 0;
             accTransactions.forEach((t: Transaction) => {
-                if (t.type === TransactionType.TRANSFER && t.date > valuationDate && t.date <= dateStr) {
-                    transfersSinceValuationAtPoint += (t.toAccountId === accId ? t.amount : -t.amount);
+                if (t.date > valuationDate && t.date <= dateStr) {
+                    if (t.accountId === accId) transfersSinceValuationAtPoint += (t.type === TransactionType.INCOME ? t.amount : -t.amount);
+                    if (t.toAccountId === accId && t.type === TransactionType.TRANSFER) transfersSinceValuationAtPoint += t.amount;
                 }
             });
 

@@ -93,9 +93,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       if (t.date > todayStr) return;
       if (t.type === TransactionType.INCOME) accBalances[t.accountId] += t.amount;
       else if (t.type === TransactionType.EXPENSE) accBalances[t.accountId] -= t.amount;
-      else if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+      else if (t.type === TransactionType.TRANSFER) {
         accBalances[t.accountId] -= t.amount;
-        if (accBalances[t.toAccountId] !== undefined) accBalances[t.toAccountId] += t.amount;
+        if (t.toAccountId && accBalances[t.toAccountId] !== undefined) accBalances[t.toAccountId] += t.amount;
       }
     });
     return accBalances;
@@ -197,14 +197,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     dataPoints.push({ date: format(today, 'yyyy-MM-dd'), displayDate: 'Today', balance: getSum(tempBals), type: 'actual', ...tempBals });
 
     for (let i = 1; i <= 30; i++) {
-      const d = subDays(today, i);
-      const dStr = format(d, 'yyyy-MM-dd');
-      const todaysTxs = txByDate.get(dStr) || [];
+      // To get the balance at the start of the day we're stepping back from, 
+      // we must reverse the transactions that occurred ON that day.
+      const dayToReverse = subDays(today, i - 1);
+      const dayToReverseStr = format(dayToReverse, 'yyyy-MM-dd');
+      const txsToReverse = txByDate.get(dayToReverseStr) || [];
 
-      todaysTxs.forEach(t => {
+      txsToReverse.forEach(t => {
         if (targetAccountIds.includes(t.accountId)) { if (t.type === TransactionType.INCOME) tempBals[t.accountId] -= t.amount; else tempBals[t.accountId] += t.amount; }
         if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) tempBals[t.toAccountId] -= t.amount;
       });
+
+      const d = subDays(today, i);
+      const dStr = format(d, 'yyyy-MM-dd');
       dataPoints.unshift({ date: dStr, displayDate: format(d, 'MMM d'), balance: getSum(tempBals), type: 'actual', ...tempBals });
     }
 
