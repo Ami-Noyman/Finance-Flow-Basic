@@ -212,15 +212,31 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, selectedAccountId, filterAccount, searchTerm, filterPayee, filterCategory, filterDateFrom, filterDateTo, filterMinAmount, filterMaxAmount]);
 
+  // The active single-account filter: either the sidebar selection or the filter dropdown
+  const activeAccountId = selectedAccountId || filterAccount || null;
+
   const filteredSummary = useMemo(() => {
     let totalIncome = 0;
     let totalExpenses = 0;
+    let transferIn = 0;
+    let transferOut = 0;
     filteredTransactions.forEach(t => {
-      if (t.type === TransactionType.INCOME) totalIncome += t.amount;
-      else if (t.type === TransactionType.EXPENSE) totalExpenses += t.amount;
+      if (t.type === TransactionType.INCOME) {
+        totalIncome += t.amount;
+      } else if (t.type === TransactionType.EXPENSE) {
+        totalExpenses += t.amount;
+      } else if (t.type === TransactionType.TRANSFER && activeAccountId) {
+        // From the perspective of the selected account:
+        if (t.toAccountId === activeAccountId) transferIn += t.amount;   // money arriving
+        if (t.accountId === activeAccountId)   transferOut += t.amount;  // money leaving
+      }
     });
-    return { totalIncome, totalExpenses, net: totalIncome - totalExpenses };
-  }, [filteredTransactions]);
+    // In single-account view, net includes transfers; in consolidated it stays income-expenses only
+    const net = activeAccountId
+      ? totalIncome + transferIn - totalExpenses - transferOut
+      : totalIncome - totalExpenses;
+    return { totalIncome, totalExpenses, transferIn, transferOut, net };
+  }, [filteredTransactions, activeAccountId]);
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown';
   const getCurrency = (id: string) => accounts.find(a => a.id === id)?.currency || 'ILS';
@@ -270,6 +286,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 <span className="text-[8px] font-black text-red-400 uppercase tracking-widest mb-0.5">Expenses</span>
                 <span className="text-sm font-black text-red-600">{formatCurrency(filteredSummary.totalExpenses)}</span>
               </div>
+              {/* Transfer breakdown — single-account view only */}
+              {activeAccountId && (filteredSummary.transferIn > 0 || filteredSummary.transferOut > 0) && (
+                <>
+                  <div className="w-px bg-gray-100" />
+                  <div className="flex flex-col items-center px-5 py-2.5 bg-blue-50">
+                    <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-0.5">⇄ In</span>
+                    <span className="text-sm font-black text-blue-600">+{formatCurrency(filteredSummary.transferIn)}</span>
+                  </div>
+                  <div className="w-px bg-gray-100" />
+                  <div className="flex flex-col items-center px-5 py-2.5 bg-purple-50">
+                    <span className="text-[8px] font-black text-purple-400 uppercase tracking-widest mb-0.5">⇄ Out</span>
+                    <span className="text-sm font-black text-purple-600">-{formatCurrency(filteredSummary.transferOut)}</span>
+                  </div>
+                </>
+              )}
               <div className="w-px bg-gray-100" />
               <div className={`flex flex-col items-center px-5 py-2.5 ${filteredSummary.net >= 0 ? 'bg-brand-50' : 'bg-orange-50'}`}>
                 <span className={`text-[8px] font-black uppercase tracking-widest mb-0.5 ${filteredSummary.net >= 0 ? 'text-brand-500' : 'text-orange-500'}`}>Net</span>
