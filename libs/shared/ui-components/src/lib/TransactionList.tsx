@@ -212,6 +212,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, selectedAccountId, filterAccount, searchTerm, filterPayee, filterCategory, filterDateFrom, filterDateTo, filterMinAmount, filterMaxAmount]);
 
+  const filteredSummary = useMemo(() => {
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    filteredTransactions.forEach(t => {
+      if (t.type === TransactionType.INCOME) totalIncome += t.amount;
+      else if (t.type === TransactionType.EXPENSE) totalExpenses += t.amount;
+    });
+    return { totalIncome, totalExpenses, net: totalIncome - totalExpenses };
+  }, [filteredTransactions]);
+
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown';
   const getCurrency = (id: string) => accounts.find(a => a.id === id)?.currency || 'ILS';
 
@@ -247,6 +257,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               {filteredTransactions.length} records
             </p>
           </div>
+
+          {/* Accumulated Summary Bar */}
+          {filteredTransactions.length > 0 && (
+            <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm shrink-0">
+              <div className="flex flex-col items-center px-5 py-2.5 bg-green-50">
+                <span className="text-[8px] font-black text-green-500 uppercase tracking-widest mb-0.5">Income</span>
+                <span className="text-sm font-black text-green-700">{formatCurrency(filteredSummary.totalIncome)}</span>
+              </div>
+              <div className="w-px bg-gray-100" />
+              <div className="flex flex-col items-center px-5 py-2.5 bg-red-50">
+                <span className="text-[8px] font-black text-red-400 uppercase tracking-widest mb-0.5">Expenses</span>
+                <span className="text-sm font-black text-red-600">{formatCurrency(filteredSummary.totalExpenses)}</span>
+              </div>
+              <div className="w-px bg-gray-100" />
+              <div className={`flex flex-col items-center px-5 py-2.5 ${filteredSummary.net >= 0 ? 'bg-brand-50' : 'bg-orange-50'}`}>
+                <span className={`text-[8px] font-black uppercase tracking-widest mb-0.5 ${filteredSummary.net >= 0 ? 'text-brand-500' : 'text-orange-500'}`}>Net</span>
+                <span className={`text-sm font-black ${filteredSummary.net >= 0 ? 'text-brand-700' : 'text-orange-600'}`}>{filteredSummary.net >= 0 ? '+' : ''}{formatCurrency(filteredSummary.net)}</span>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
