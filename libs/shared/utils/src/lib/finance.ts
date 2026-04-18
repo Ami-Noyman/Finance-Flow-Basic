@@ -211,7 +211,9 @@ export const calculateBalanceAlerts = (
                 }
 
                 r.simProcessedCount++;
+                // Advance to next occurrence (only once!)
                 r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
+
                 if (workingBalances[r.accountId] < 0) {
                     const acc = accounts.find(a => a.id === r.accountId);
                     if (acc && (acc.type === 'checking' || acc.type === 'cash')) {
@@ -229,8 +231,6 @@ export const calculateBalanceAlerts = (
                         }
                     }
                 }
-
-                r.simDate = calculateNextDate(r.simDate, r.frequency, r.customInterval, r.customUnit);
             }
         });
     }
