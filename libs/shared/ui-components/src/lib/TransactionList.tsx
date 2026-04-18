@@ -222,18 +222,30 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   // Running balance map: walk ALL transactions chronologically and track the
   // cumulative balance of EVERY account simultaneously.
   // Key = transaction id, Value = balance of that transaction's source account AFTER it is applied.
+  //
+  // Same-date ordering fix: the transactions array is typically newest-first
+  // (DB fetch order). For same-date items, JS stable sort would keep newest-first,
+  // causing the newest transaction to be processed first (giving it the SMALLEST
+  // running balance) even though it appears at the TOP of the display.
+  // Fix: for same-date transactions, sort by DESCENDING original index so the
+  // oldest-within-day (higher index in a newest-first array) is processed first,
+  // making the top row always show the cumulative end-of-day balance.
   const runningBalanceMap = useMemo(() => {
     if (accounts.length === 0) return new Map<string, number>();
 
-    // Start each account at its initialBalance
     const balances: Record<string, number> = {};
     accounts.forEach(a => { balances[a.id] = a.initialBalance; });
 
-    // Walk ALL transactions in chronological order
-    const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
-    const map = new Map<string, number>();
+    // Tag with original index before sorting
+    const indexed = transactions.map((t, i) => ({ t, i }));
+    indexed.sort((a, b) => {
+      const dateDiff = a.t.date.localeCompare(b.t.date);
+      if (dateDiff !== 0) return dateDiff;          // ascending by date
+      return b.i - a.i;                             // same date → higher index (older) first
+    });
 
-    sorted.forEach(t => {
+    const map = new Map<string, number>();
+    indexed.forEach(({ t }) => {
       if (t.type === TransactionType.INCOME) {
         balances[t.accountId] = (balances[t.accountId] ?? 0) + t.amount;
       } else if (t.type === TransactionType.EXPENSE) {
@@ -242,7 +254,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         balances[t.accountId] = (balances[t.accountId] ?? 0) - t.amount;
         if (t.toAccountId) balances[t.toAccountId] = (balances[t.toAccountId] ?? 0) + t.amount;
       }
-      // Record the source account's balance after this transaction
       map.set(t.id, balances[t.accountId]);
     });
 
