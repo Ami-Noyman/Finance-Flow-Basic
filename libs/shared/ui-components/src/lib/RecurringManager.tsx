@@ -56,6 +56,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
   // Recurring Form
   const [amount, setAmount] = useState('');
+  const [originalAmount, setOriginalAmount] = useState('');
   const [amountType, setAmountType] = useState<AmountType>(AmountType.FIXED);
   const [payee, setPayee] = useState('');
   const [notes, setNotes] = useState('');
@@ -171,6 +172,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       const rAny = r as any;
       setEditingId(r.id);
       setAmount(r.amount.toString());
+      setOriginalAmount(r.amount.toString());
       setAmountType(r.amountType || AmountType.FIXED);
       setPayee(r.payee || rAny.description || '');
       setNotes(r.notes || '');
@@ -223,22 +225,10 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
       onAddCategory(customCategory);
     }
 
-    let finalAmountType = amountType;
-    if (editingId && amount) {
-      const original = recurring.find(r => r.id === editingId);
-      if (original && parseFloat(amount) !== original.amount) {
-        if (original.amountType === AmountType.AVERAGE) {
-          finalAmountType = AmountType.FIXED_THEN_AVERAGE as any;
-        } else if (original.amountType === AmountType.LAST_YEAR) {
-          finalAmountType = AmountType.FIXED; // Per user request, permanent for last year
-        }
-      }
-    }
-
     const recData: RecurringTransaction = {
       id: editingId || crypto.randomUUID(),
       amount: parseFloat(amount),
-      amountType: finalAmountType,
+      amountType,
       payee,
       notes: notes.trim() || undefined,
       category: finalCategory || 'כללי',
@@ -276,7 +266,7 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
   };
 
   const resetForm = () => {
-    setEditingId(null); setAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(''); setToAccountId(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month'); setTotalOccurrences('');
+    setEditingId(null); setAmount(''); setOriginalAmount(''); setPayee(''); setNotes(''); setCategory(''); setCustomCategory(''); setType(TransactionType.EXPENSE); setFrequency(Frequency.MONTHLY); setStartDate(format(new Date(), 'yyyy-MM-dd')); setAccountId(''); setToAccountId(''); setAmountType(AmountType.FIXED); setCustomInterval('1'); setCustomUnit('month'); setTotalOccurrences('');
     setPayeeSuggestions([]); setShowPayeeSuggestions(false);
     setCategorySuggestions([]); setShowCategorySuggestions(false);
   };
@@ -670,15 +660,64 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
 
               <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-16 resize-none outline-none focus:ring-2 focus:ring-brand-500 font-medium" placeholder="Optional details..." /></div>
 
-              <div className="grid grid-cols-3 gap-5">
-                <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Amount</label><input type="number" required min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black" /></div>
+              <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest text-brand-600 flex items-center gap-1"><Sparkles size={10} /> Smart Engine</label>
-                  <select value={amountType === AmountType.FIXED_THEN_AVERAGE ? AmountType.AVERAGE : amountType} onChange={e => setAmountType(e.target.value as AmountType)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm bg-brand-50 text-brand-800 outline-none focus:ring-2 focus:ring-brand-500 font-bold">
-                    <option value={AmountType.FIXED}>Fixed</option>
-                    <option value={AmountType.AVERAGE}>Auto-Average</option>
-                    <option value={AmountType.LAST_YEAR}>Last Year Match</option>
-                  </select>
+                  <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest flex items-center justify-between">
+                    Amount
+                    {(amountType === AmountType.AVERAGE || amountType === AmountType.LAST_YEAR || amountType === AmountType.FIXED_THEN_AVERAGE) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (amountType === AmountType.FIXED_THEN_AVERAGE) {
+                             setAmountType(AmountType.AVERAGE);
+                             setAmount(originalAmount); // Revert to original text
+                          } else {
+                             setAmountType(AmountType.FIXED_THEN_AVERAGE);
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-widest font-black transition-all ${
+                          amountType === AmountType.FIXED_THEN_AVERAGE
+                            ? 'bg-orange-100 text-orange-600 border border-orange-200 shadow-sm'
+                            : 'bg-brand-100 text-brand-600 border border-brand-200 shadow-sm'
+                        }`}
+                      >
+                        {amountType === AmountType.FIXED_THEN_AVERAGE ? (
+                          <><AlertTriangle size={8} /> Paused (Override Active)</>
+                        ) : (
+                          <><Sparkles size={8} /> Smart Linked</>
+                        )}
+                        <div className={`w-4 h-2.5 rounded-full relative transition-colors ${amountType === AmountType.FIXED_THEN_AVERAGE ? 'bg-orange-300' : 'bg-brand-500'}`}>
+                          <div className={`absolute top-0.5 w-1.5 h-1.5 rounded-full bg-white transition-all ${amountType === AmountType.FIXED_THEN_AVERAGE ? 'left-0.5' : 'left-2'}`}></div>
+                        </div>
+                      </button>
+                    )}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAmount(val);
+                      if (val !== originalAmount && amountType === AmountType.AVERAGE) {
+                        setAmountType(AmountType.FIXED_THEN_AVERAGE as AmountType);
+                      } else if (val === originalAmount && amountType === AmountType.FIXED_THEN_AVERAGE) {
+                        setAmountType(AmountType.AVERAGE);
+                      } else if (val !== originalAmount && amountType === AmountType.LAST_YEAR) {
+                        setAmountType(AmountType.FIXED);
+                      }
+                    }}
+                    className={`w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-black transition-colors ${
+                       amountType === AmountType.FIXED_THEN_AVERAGE ? 'border-orange-300 bg-orange-50 text-orange-900' : 'border-gray-200'
+                    }`}
+                  />
+                  {amountType === AmountType.FIXED_THEN_AVERAGE && (
+                    <p className="text-[10px] text-orange-600 font-medium mt-1 ml-1 leading-tight">
+                      System will use this exact manual sum for the next occurrence, then revert to auto-calculating.
+                    </p>
+                  )}
                 </div>
                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest">Installments</label><input type="number" value={totalOccurrences} onChange={e => setTotalOccurrences(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500 font-bold" placeholder="Infinite" /></div>
               </div>
