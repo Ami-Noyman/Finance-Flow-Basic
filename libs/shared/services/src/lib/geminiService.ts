@@ -186,7 +186,7 @@ export const createFinancialChatSession = (transactions: Transaction[], recurrin
     if (!hasValidApiKey()) throw new Error("API_KEY_MISSING");
 
     const accountSummary = accounts.map(a => `- ${a.name}: ${a.currency} ${a.initialBalance}`).join('\n');
-    const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee}: ${r.amount}`).join('\n');
+    const recurringSummary = recurring.filter(r => r.isActive).map(r => `- ${r.payee} (Next Date: ${r.nextDueDate}): ${r.amount} (${r.type})`).join('\n');
     const recentTx = transactions.slice(0, 50).map(t => `${t.date}: ${t.payee} (${t.amount})`).join('\n');
 
     const systemInstruction = `אתה בוט פיננסי עוזר עבור אפליקציית FinanceFlow. השב תמיד בעברית.\nקונטקסט:\nחשבונות:\n${accountSummary}\nהתחייבויות:\n${recurringSummary}\n50 תנועות אחרונות:\n${recentTx}`;
