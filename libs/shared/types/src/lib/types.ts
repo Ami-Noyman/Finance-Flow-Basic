@@ -18,7 +18,8 @@ export enum Frequency {
 export enum AmountType {
   FIXED = 'fixed',
   AVERAGE = 'average',
-  LAST_YEAR = 'last_year'
+  LAST_YEAR = 'last_year',
+  FIXED_THEN_AVERAGE = 'fixed_then_average'
 }
 
 export interface Valuation {

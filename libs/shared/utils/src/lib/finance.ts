@@ -58,8 +58,7 @@ export const calculateNextDate = (
 };
 
 export const getSmartAmount = (r: RecurringTransaction, targetDate: Date, history: Transaction[]): number => {
-  if (r.type === TransactionType.TRANSFER) return r.amount;
-  if (!r.amountType || r.amountType === AmountType.FIXED) return r.amount;
+  if (!r.amountType || r.amountType === AmountType.FIXED || r.amountType === AmountType.FIXED_THEN_AVERAGE) return r.amount;
   const matches = history.filter(t => (t.payee === r.payee || (t as any).description === r.payee) && t.type === r.type);
   if (r.amountType === AmountType.AVERAGE) {
       if (matches.length === 0) return r.amount;

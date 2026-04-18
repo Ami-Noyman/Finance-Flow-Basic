@@ -89,6 +89,8 @@ const App: React.FC = () => {
 
         r.nextDueDate = format(nextDue, 'yyyy-MM-dd');
         r.occurrencesProcessed = processedCount;
+        
+        if (r.amountType === 'fixed_then_average') r.amountType = 'average';
 
         if (r.totalOccurrences && processedCount >= r.totalOccurrences) {
           r.isActive = false;
@@ -348,7 +350,8 @@ const App: React.FC = () => {
       ...r,
       nextDueDate: format(newNextDue, 'yyyy-MM-dd'),
       occurrencesProcessed: updatedCount,
-      isActive: isNowActive
+      isActive: isNowActive,
+      amountType: r.amountType === 'fixed_then_average' ? ('average' as any) : r.amountType
     };
 
     try {
