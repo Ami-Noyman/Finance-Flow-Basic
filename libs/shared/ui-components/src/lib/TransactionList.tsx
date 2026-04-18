@@ -263,6 +263,35 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown';
   const getCurrency = (id: string) => accounts.find(a => a.id === id)?.currency || 'ILS';
 
+  // Running balance map: for single-account view, compute the cumulative account
+  // balance after every transaction using the full (unfiltered) history.
+  // Key = transaction id, Value = account balance AFTER that transaction.
+  const runningBalanceMap = useMemo(() => {
+    if (!activeAccountId) return new Map<string, number>();
+    const account = accounts.find(a => a.id === activeAccountId);
+    if (!account) return new Map<string, number>();
+
+    // All transactions that touch this account, chronological order
+    const accountTxs = [...transactions]
+      .filter(t => t.accountId === activeAccountId || t.toAccountId === activeAccountId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let balance = account.initialBalance;
+    const map = new Map<string, number>();
+    accountTxs.forEach(t => {
+      if (t.type === TransactionType.INCOME && t.accountId === activeAccountId) {
+        balance += t.amount;
+      } else if (t.type === TransactionType.EXPENSE && t.accountId === activeAccountId) {
+        balance -= t.amount;
+      } else if (t.type === TransactionType.TRANSFER) {
+        if (t.accountId === activeAccountId)   balance -= t.amount;
+        if (t.toAccountId === activeAccountId) balance += t.amount;
+      }
+      map.set(t.id, balance);
+    });
+    return map;
+  }, [activeAccountId, accounts, transactions]);
+
   const openEdit = (t: Transaction) => {
     setEditingId(t.id);
     setAmount(t.amount.toString());
@@ -420,25 +449,46 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       </div>
 
       <div className="overflow-y-auto flex-1 p-0">
-        <table className="w-full text-left border-collapse min-w-[800px]">
-          <thead className="bg-gray-50 sticky top-0 z-10"><tr className="border-b border-gray-100"><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center w-12">R</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Date</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Account</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Payee</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Category</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Amount</th><th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Actions</th></tr></thead>
+        <table className="w-full text-left border-collapse min-w-[900px]">
+          <thead className="bg-gray-50 sticky top-0 z-10"><tr className="border-b border-gray-100">
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center w-12">R</th>
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Date</th>
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Account</th>
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Payee</th>
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Category</th>
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Amount</th>
+            {activeAccountId && <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-right">Balance</th>}
+            <th className="p-4 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Actions</th>
+          </tr></thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredTransactions.map(t => (
-              <tr key={t.id} className="hover:bg-gray-50/50 group transition-colors">
-                <td className="p-4 text-center"><button onClick={() => onEditTransaction({ ...t, isReconciled: !t.isReconciled })} className={`transition-colors ${t.isReconciled ? 'text-green-500' : 'text-gray-300 hover:text-gray-400'}`}>{t.isReconciled ? <CheckSquare size={16} /> : <Square size={16} />}</button></td>
-                <td className="p-4 text-xs text-gray-600 font-bold whitespace-nowrap">{t.date}</td>
-                <td className="p-4 text-[10px] font-black text-gray-400 truncate max-w-[120px]">{getAccountName(t.accountId)}</td>
-                <td className="p-4 text-xs font-bold text-gray-900">{t.payee || (t as any).description}</td>
-                <td className="p-4 text-xs text-gray-500"><span className="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-black uppercase text-gray-500 border border-gray-200">{t.category}</span></td>
-                <td className={`p-4 text-sm font-black text-right ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(t.amount, getCurrency(t.accountId))}</td>
-                <td className="p-4 text-center">
-                  <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(t)} className="p-1.5 text-gray-400 hover:text-brand-600"><Edit2 size={16} /></button>
-                    <button onClick={() => confirm("Delete entry?") && onDeleteTransaction(t.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {filteredTransactions.map(t => {
+              const runningBal = runningBalanceMap.get(t.id);
+              return (
+                <tr key={t.id} className="hover:bg-gray-50/50 group transition-colors">
+                  <td className="p-4 text-center"><button onClick={() => onEditTransaction({ ...t, isReconciled: !t.isReconciled })} className={`transition-colors ${t.isReconciled ? 'text-green-500' : 'text-gray-300 hover:text-gray-400'}`}>{t.isReconciled ? <CheckSquare size={16} /> : <Square size={16} />}</button></td>
+                  <td className="p-4 text-xs text-gray-600 font-bold whitespace-nowrap">{t.date}</td>
+                  <td className="p-4 text-[10px] font-black text-gray-400 truncate max-w-[120px]">{getAccountName(t.accountId)}</td>
+                  <td className="p-4 text-xs font-bold text-gray-900">{t.payee || (t as any).description}</td>
+                  <td className="p-4 text-xs text-gray-500"><span className="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-black uppercase text-gray-500 border border-gray-200">{t.category}</span></td>
+                  <td className={`p-4 text-sm font-black text-right ${t.type === 'income' ? 'text-green-600' : (t.type === 'transfer' ? 'text-blue-600' : 'text-red-600')}`}>
+                    {t.type === 'income' ? '+' : t.type === 'transfer' ? '⇄ ' : '-'}{formatCurrency(t.amount, getCurrency(t.accountId))}
+                  </td>
+                  {activeAccountId && (
+                    <td className={`p-4 text-xs font-black text-right tabular-nums ${
+                      runningBal === undefined ? 'text-gray-300' : runningBal >= 0 ? 'text-slate-700' : 'text-red-600'
+                    }`}>
+                      {runningBal !== undefined ? formatCurrency(runningBal, getCurrency(activeAccountId)) : '—'}
+                    </td>
+                  )}
+                  <td className="p-4 text-center">
+                    <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(t)} className="p-1.5 text-gray-400 hover:text-brand-600"><Edit2 size={16} /></button>
+                      <button onClick={() => confirm("Delete entry?") && onDeleteTransaction(t.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
