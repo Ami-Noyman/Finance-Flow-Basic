@@ -663,34 +663,32 @@ export const RecurringManager: React.FC<RecurringManagerProps> = ({
               <div className="grid grid-cols-2 gap-5">
                 <div>
                   <label className="block text-xs font-black text-gray-500 uppercase mb-1.5 ml-1 tracking-widest flex items-center justify-between">
-                    Amount
-                    {(amountType === AmountType.AVERAGE || amountType === AmountType.LAST_YEAR || amountType === AmountType.FIXED_THEN_AVERAGE) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (amountType === AmountType.FIXED_THEN_AVERAGE) {
-                             setAmountType(AmountType.AVERAGE);
-                             setAmount(originalAmount); // Revert to original text
-                          } else {
-                             setAmountType(AmountType.FIXED_THEN_AVERAGE);
-                          }
-                        }}
-                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-widest font-black transition-all ${
-                          amountType === AmountType.FIXED_THEN_AVERAGE
-                            ? 'bg-orange-100 text-orange-600 border border-orange-200 shadow-sm'
-                            : 'bg-brand-100 text-brand-600 border border-brand-200 shadow-sm'
+                    <span>Amount</span>
+                    <div className="flex items-center gap-2">
+                      {amountType === AmountType.FIXED_THEN_AVERAGE && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAmountType(AmountType.AVERAGE);
+                            setAmount(originalAmount);
+                          }}
+                          className="flex items-center gap-1 bg-orange-100 text-orange-600 px-2 py-1 rounded text-[9px] font-black uppercase hover:bg-orange-200 transition-colors"
+                        >
+                          <RotateCcw size={10} /> Revert Override
+                        </button>
+                      )}
+                      <select
+                        value={amountType === AmountType.FIXED_THEN_AVERAGE ? AmountType.AVERAGE : amountType}
+                        onChange={(e) => setAmountType(e.target.value as AmountType)}
+                        className={`text-[10px] font-black uppercase tracking-widest outline-none py-1 px-2 rounded-lg border cursor-pointer transition-colors ${
+                          amountType === AmountType.FIXED ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-brand-50 border-brand-200 text-brand-600'
                         }`}
                       >
-                        {amountType === AmountType.FIXED_THEN_AVERAGE ? (
-                          <><AlertTriangle size={8} /> Paused (Override Active)</>
-                        ) : (
-                          <><Sparkles size={8} /> Smart Linked</>
-                        )}
-                        <div className={`w-4 h-2.5 rounded-full relative transition-colors ${amountType === AmountType.FIXED_THEN_AVERAGE ? 'bg-orange-300' : 'bg-brand-500'}`}>
-                          <div className={`absolute top-0.5 w-1.5 h-1.5 rounded-full bg-white transition-all ${amountType === AmountType.FIXED_THEN_AVERAGE ? 'left-0.5' : 'left-2'}`}></div>
-                        </div>
-                      </button>
-                    )}
+                        <option value={AmountType.FIXED}>Fixed</option>
+                        <option value={AmountType.AVERAGE}>Smart Avg</option>
+                        <option value={AmountType.LAST_YEAR}>Smart YoY</option>
+                      </select>
+                    </div>
                   </label>
                   <input
                     type="number"
