@@ -214,7 +214,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     }
 
     const forecastBals = { ...currentBalancesAtHistory };
-    const activeRecs = recurring.filter(r => r.isActive).map(r => ({ ...r, next: parseISO(r.nextDueDate) }));
+    const activeRecs = recurring.filter(r => r.isActive).map(r => ({ ...r, nextStr: r.nextDueDate || format(new Date(), 'yyyy-MM-dd') }));
     for (let i = 1; i <= 60; i++) {
       const d = addDays(today, i);
       const dStr = format(d, 'yyyy-MM-dd');
@@ -225,11 +225,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
         if (t.toAccountId && targetAccountIds.includes(t.toAccountId)) forecastBals[t.toAccountId] += t.amount;
       });
       activeRecs.forEach(r => {
-        if (isSameDay(r.next, d)) {
+        if (r.nextStr === dStr) {
           const amt = getSmartAmount(r, d, transactions);
           if (targetAccountIds.includes(r.accountId)) { if (r.type === TransactionType.INCOME) forecastBals[r.accountId] += amt; else forecastBals[r.accountId] -= amt; }
           if (r.toAccountId && targetAccountIds.includes(r.toAccountId)) forecastBals[r.toAccountId] += amt;
-          r.next = calculateNextDate(r.next, r.frequency, r.customInterval, r.customUnit);
+          const updatedDate = calculateNextDate(parseISO(r.nextStr), r.frequency, r.customInterval, r.customUnit);
+          r.nextStr = format(updatedDate, 'yyyy-MM-dd');
         }
       });
       dataPoints.push({ date: dStr, displayDate: format(d, 'MMM d'), forecast: getSum(forecastBals), type: 'forecast', ...forecastBals });
