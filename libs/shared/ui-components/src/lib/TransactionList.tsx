@@ -244,6 +244,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       return b.i - a.i;                             // same date → higher index (older) first
     });
 
+    // Map keys:
+    //   t.id              → post-transaction balance of the SOURCE account
+    //   `${t.id}:to`      → post-transaction balance of the DESTINATION account (transfers only)
     const map = new Map<string, number>();
     indexed.forEach(({ t }) => {
       if (t.type === TransactionType.INCOME) {
@@ -252,7 +255,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         balances[t.accountId] = (balances[t.accountId] ?? 0) - t.amount;
       } else if (t.type === TransactionType.TRANSFER) {
         balances[t.accountId] = (balances[t.accountId] ?? 0) - t.amount;
-        if (t.toAccountId) balances[t.toAccountId] = (balances[t.toAccountId] ?? 0) + t.amount;
+        if (t.toAccountId) {
+          balances[t.toAccountId] = (balances[t.toAccountId] ?? 0) + t.amount;
+          map.set(`${t.id}:to`, balances[t.toAccountId]);
+        }
       }
       map.set(t.id, balances[t.accountId]);
     });
@@ -369,7 +375,18 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           </tr></thead>
           <tbody className="divide-y divide-gray-100">
             {filteredTransactions.map(t => {
-              const runningBal = runningBalanceMap.get(t.id);
+              // For transfer transactions appearing from the destination account's perspective,
+              // use the destination account's running balance instead of the source account's.
+              const isIncomingTransfer =
+                t.type === TransactionType.TRANSFER &&
+                activeAccountId !== null &&
+                t.toAccountId === activeAccountId &&
+                t.accountId !== activeAccountId;
+              const runningBal = isIncomingTransfer
+                ? runningBalanceMap.get(`${t.id}:to`)
+                : runningBalanceMap.get(t.id);
+              // For display purposes, use the correct account's currency
+              const displayAccountId = isIncomingTransfer && t.toAccountId ? t.toAccountId : t.accountId;
               return (
                 <tr key={t.id} className="hover:bg-gray-50/50 group transition-colors">
                   <td className="p-4 text-center"><button onClick={() => onEditTransaction({ ...t, isReconciled: !t.isReconciled })} className={`transition-colors ${t.isReconciled ? 'text-green-500' : 'text-gray-300 hover:text-gray-400'}`}>{t.isReconciled ? <CheckSquare size={16} /> : <Square size={16} />}</button></td>
@@ -383,7 +400,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   <td className={`p-4 text-xs font-black text-right tabular-nums ${
                     runningBal === undefined ? 'text-gray-300' : runningBal >= 0 ? 'text-slate-700' : 'text-red-600'
                   }`}>
-                    {runningBal !== undefined ? formatCurrency(runningBal, getCurrency(t.accountId)) : '—'}
+                    {runningBal !== undefined ? formatCurrency(runningBal, getCurrency(displayAccountId)) : '—'}
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
