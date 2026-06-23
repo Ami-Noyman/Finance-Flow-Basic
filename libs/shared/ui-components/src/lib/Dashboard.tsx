@@ -22,9 +22,10 @@ interface DashboardProps {
   accounts: Account[];
   goals: FinancialGoal[];
   selectedAccountId: string | null;
+  isHistoryLoaded?: boolean;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, categoryBudgets, accounts, goals, selectedAccountId }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, categoryBudgets, accounts, goals, selectedAccountId, isHistoryLoaded = true }) => {
   const [showIndividualLines, setShowIndividualLines] = useState(true);
   const [anomalies, setAnomalies] = useState<string[]>(() => {
     const cached = localStorage.getItem(AI_ANOMALIES_CACHE_KEY);
@@ -244,6 +245,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     <div className="space-y-8 animate-fade-in pb-12 max-w-7xl mx-auto">
 
       {/* 0. NOTIFICATIONS & HEALTH */}
+      {!isHistoryLoaded && (
+        <div className="bg-amber-500 text-white p-5 rounded-[2rem] shadow-xl animate-fade-in relative overflow-hidden mb-6">
+          <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><RefreshCw size={120} className="animate-spin" style={{ animationDuration: '8s' }} /></div>
+          <div className="relative z-10 flex items-center gap-6">
+            <div className="p-4 bg-white/20 rounded-2xl animate-pulse flex items-center justify-center shrink-0">
+              <RefreshCw size={24} className="animate-spin" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black tracking-tight uppercase">Syncing History...</h2>
+              <p className="text-amber-50 font-medium text-xs mt-0.5 leading-relaxed">
+                Loading complete transaction history. Account balances may be temporarily inaccurate until sync completes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {dbUnhealthy && (
         <div className="bg-red-600 text-white p-6 rounded-[2rem] shadow-2xl border-4 border-red-500/50 animate-fade-in relative overflow-hidden mb-6">
           <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><Database size={120} /></div>

@@ -26,6 +26,7 @@ interface SettingsProps {
   onDeleteRule: (id: string) => Promise<void>;
   onCreateCategory: (name: string) => Promise<void>;
   onDeleteCategory: (name: string) => Promise<void>;
+  isHistoryLoaded?: boolean;
 }
 
 const IS_ASSET_CLASS = (type: string) => ['savings', 'pension', 'investment', 'loan', 'mortgage'].includes(type);
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 export const Settings: React.FC<SettingsProps> = ({ 
   accounts, categories, rules, transactions = [], recurring = [], goals = [],
-  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onSaveRule, onDeleteRule, onCreateCategory, onDeleteCategory
+  onSaveAccount, onDeleteAccount, onUpdateCategories, onRenameCategory, onRestoreData, onSaveRule, onDeleteRule, onCreateCategory, onDeleteCategory,
+  isHistoryLoaded = true
 }) => {
   const [activeTab, setActiveTab] = useState<'accounts' | 'categories' | 'rules' | 'db' | 'data'>('accounts');
   const [tableHealth, setTableHealth] = useState<Record<string, boolean>>({});
@@ -316,10 +318,25 @@ export const Settings: React.FC<SettingsProps> = ({
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-6">
-                   <div>
-                       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Current/Initial Balance</label>
-                       <input type="number" value={accInitialBalance} onChange={e=>setAccInitialBalance(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl text-sm font-bold outline-none"/>
-                   </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-1">
+                            Current/Initial Balance
+                            {!isHistoryLoaded && (
+                                <span className="text-amber-500 flex items-center gap-0.5 font-bold normal-case text-[9px] tracking-normal">
+                                    <AlertTriangle size={10} /> Syncing...
+                                </span>
+                            )}
+                        </label>
+                        <input 
+                            type="number" 
+                            value={accInitialBalance} 
+                            onChange={e=>setAccInitialBalance(e.target.value)} 
+                            placeholder="0.00" 
+                            disabled={!isHistoryLoaded}
+                            className={`w-full p-3 border rounded-xl text-sm font-bold outline-none ${!isHistoryLoaded ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : ''}`}
+                            title={!isHistoryLoaded ? 'Please wait until background sync finishes before editing starting balance.' : undefined}
+                        />
+                    </div>
                    <div>
                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Currency</label>
                        <select value={accCurrency} onChange={e=>setAccCurrency(e.target.value)} className="w-full p-3 border rounded-xl text-sm font-bold bg-white">

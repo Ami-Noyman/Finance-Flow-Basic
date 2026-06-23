@@ -36,6 +36,7 @@ const App: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [financialInsight, setFinancialInsight] = useState<string | null>(null);
 
@@ -58,7 +59,7 @@ const App: React.FC = () => {
       let nextDue = parseISO(r.nextDueDate);
 
       let processedCount = r.occurrencesProcessed || 0;
-      let hasPostedForThisRule = false;
+      let hasUpdatedRule = false;
 
       while (isBefore(nextDue, today) || isSameDay(nextDue, today)) {
         if (r.totalOccurrences && processedCount >= r.totalOccurrences) {
@@ -66,24 +67,32 @@ const App: React.FC = () => {
           break;
         }
 
-        const amount = getSmartAmount(r, nextDue, currentTransactions);
-        const newTx: Transaction = {
-          id: crypto.randomUUID(),
-          date: format(nextDue, 'yyyy-MM-dd'),
-          amount,
-          payee: r.payee,
-          category: r.category,
-          type: r.type,
-          accountId: r.accountId,
-          toAccountId: r.toAccountId,
-          isRecurring: true,
-          recurringId: r.id,
-          isReconciled: false
-        };
+        const dateStr = format(nextDue, 'yyyy-MM-dd');
+        // Check if this occurrence was already posted to transactions
+        const alreadyExists = currentTransactions.some(
+          t => t.recurringId === r.id && t.date === dateStr
+        );
 
-        newTransactions.push(newTx);
+        if (!alreadyExists) {
+          const amount = getSmartAmount(r, nextDue, currentTransactions);
+          const newTx: Transaction = {
+            id: crypto.randomUUID(),
+            date: dateStr,
+            amount,
+            payee: r.payee,
+            category: r.category,
+            type: r.type,
+            accountId: r.accountId,
+            toAccountId: r.toAccountId,
+            isRecurring: true,
+            recurringId: r.id,
+            isReconciled: false
+          };
+          newTransactions.push(newTx);
+        }
+
         processedCount++;
-        hasPostedForThisRule = true;
+        hasUpdatedRule = true;
 
         nextDue = calculateNextDate(nextDue, r.frequency, r.customInterval, r.customUnit);
 
@@ -98,24 +107,30 @@ const App: React.FC = () => {
         }
       }
 
-      if (hasPostedForThisRule) {
+      if (hasUpdatedRule) {
         updatedRecurring.push(r);
       }
     }
 
-    if (newTransactions.length > 0) {
+    if (newTransactions.length > 0 || updatedRecurring.length > 0) {
       try {
         console.log(`[Recurring Engine] Persisting ${newTransactions.length} transactions and ${updatedRecurring.length} rule updates...`);
-        await batchCreateTransactions(newTransactions);
+        if (newTransactions.length > 0) {
+          await batchCreateTransactions(newTransactions);
+        }
         if (updatedRecurring.length > 0) {
           await batchCreateRecurring(updatedRecurring);
         }
 
-        setTransactions(prev => [...newTransactions, ...prev]);
-        setRecurring(prev => prev.map(old => {
-          const found = updatedRecurring.find(u => u.id === old.id);
-          return found ? found : old;
-        }));
+        if (newTransactions.length > 0) {
+          setTransactions(prev => [...newTransactions, ...prev]);
+        }
+        if (updatedRecurring.length > 0) {
+          setRecurring(prev => prev.map(old => {
+            const found = updatedRecurring.find(u => u.id === old.id);
+            return found ? found : old;
+          }));
+        }
         console.log("[Recurring Engine] Finished processing successfully.");
       } catch (e) {
         console.error("[Recurring Engine] ERROR:", e);
@@ -189,6 +204,7 @@ const App: React.FC = () => {
       }, 15000);
 
       // Phase 1: PRIORITY (Accounts, Recurring, Recent TXs)
+      setIsHistoryLoaded(false);
       loadData(session.user.id, true).then(({ recurring: recs, transactions: txs }) => {
         console.log("[App] Priority data loaded, triggering initial rules process...");
         processDueRecurring(recs, txs).finally(() => {
@@ -199,12 +215,18 @@ const App: React.FC = () => {
           // Phase 2: BACKGROUND (History, Budgets, Goals, Vals)
           setTimeout(() => {
             console.log("[App] Starting Phase 2: Full History Sync...");
-            loadData(session.user.id, false);
+            loadData(session.user.id, false).then(() => {
+              console.log("[App] Phase 2 Completion: Full History Synced.");
+              setIsHistoryLoaded(true);
+            }).catch(err => {
+              console.error("[App] Phase 2 Sync Failed:", err);
+            });
           }, 1000); // 1s breather
         });
       });
     } else {
       loadedUserIdRef.current = null;
+      setIsHistoryLoaded(false);
     }
   }, [session]);
 
@@ -384,7 +406,7 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     const sortedAccs = sortAccounts(accounts);
-    const commonProps = { transactions, recurring, categoryBudgets, accounts: sortedAccs, goals, selectedAccountId, valuations, rules };
+    const commonProps = { transactions, recurring, categoryBudgets, accounts: sortedAccs, goals, selectedAccountId, valuations, rules, isHistoryLoaded };
     switch (activeTab) {
       case 'dashboard': return <Dashboard {...commonProps} />;
       case 'transactions': return <TransactionList {...commonProps} categories={categories} onAddTransaction={handleAddTransaction} onEditTransaction={handleEditTransaction} onDeleteTransaction={handleDeleteTransaction} onAddCategory={handleCreateCategory} />;
@@ -425,10 +447,10 @@ const App: React.FC = () => {
           <h1 className="text-xl font-bold text-white capitalize flex items-center gap-2">
             {activeTab}
             <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-[10px] font-black text-white/60 select-none">V18</span>
-            {isDataLoading && (
+            {(isDataLoading || !isHistoryLoaded) && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-white/20 rounded text-[10px] font-black uppercase tracking-widest animate-pulse">
                 <RefreshCw size={10} className="animate-spin" />
-                Syncing
+                {isDataLoading ? 'Syncing' : 'Syncing History'}
               </span>
             )}
           </h1>
