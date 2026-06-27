@@ -334,17 +334,47 @@ export const deleteAccount = async (id: string) => {
 export const fetchTransactions = async (uid?: string, startDate?: string): Promise<Transaction[]> => {
     try {
         const { supabase, userId } = await getContext();
-        let query = supabase.from('transactions').select('*').eq('user_id', uid || userId).order('date', { ascending: false });
+        const targetUid = uid || userId;
         
-        if (startDate) {
-            query = query.gte('date', startDate);
+        let allTransactions: Transaction[] = [];
+        let hasMore = true;
+        let page = 0;
+        const pageSize = 1000;
+
+        while (hasMore) {
+            const from = page * pageSize;
+            const to = from + pageSize - 1;
+
+            let query = supabase
+                .from('transactions')
+                .select('*')
+                .eq('user_id', targetUid)
+                .order('date', { ascending: false })
+                .range(from, to);
+
+            if (startDate) {
+                query = query.gte('date', startDate);
+            }
+
+            const data = await safeFetch<Transaction>(
+                query,
+                mapTransaction,
+                'transactions'
+            );
+
+            if (data && data.length > 0) {
+                allTransactions = [...allTransactions, ...data];
+                if (data.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
+            } else {
+                hasMore = false;
+            }
         }
 
-        return safeFetch<Transaction>(
-            query,
-            mapTransaction,
-            'transactions'
-        );
+        return allTransactions;
     } catch (e) { return []; }
 };
 
