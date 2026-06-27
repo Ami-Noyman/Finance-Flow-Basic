@@ -165,7 +165,7 @@ export const Settings: React.FC<SettingsProps> = ({
     if (!accName || isSaving) return;
     setIsSaving(true);
     try {
-        const initialBalanceVal = parseFloat(accInitialBalance) || 0;
+        const initialBalanceVal = parseFloat(accInitialBalance.replace(/[^\d.-]/g, '')) || 0;
         let finalSubType = accSubType;
         
         if (finalSubType === 'Other' && newCustomSubType.trim()) {
@@ -328,7 +328,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             )}
                         </label>
                         <input 
-                            type="number" 
+                            type="text" 
                             value={accInitialBalance} 
                             onChange={e=>setAccInitialBalance(e.target.value)} 
                             placeholder="0.00" 
