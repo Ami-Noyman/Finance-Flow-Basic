@@ -173,6 +173,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
     if (targetAccountIds.length === 0) return [];
 
     const today = startOfDay(new Date());
+    const todayStr = format(today, 'yyyy-MM-dd');
     const currentBalancesAtHistory: Record<string, number> = {};
     targetAccountIds.forEach(id => currentBalancesAtHistory[id] = accounts.find(a => a.id === id)?.initialBalance || 0);
 
@@ -183,7 +184,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ transactions, recurring, c
       txByDate.get(t.date)!.push(t);
 
       // Initial balance adjustment for history
-      if (parseISO(t.date) <= today) {
+      if (t.date <= todayStr) {
         if (targetAccountIds.includes(t.accountId)) {
           if (t.type === TransactionType.INCOME) currentBalancesAtHistory[t.accountId] += t.amount;
           else currentBalancesAtHistory[t.accountId] -= t.amount;
