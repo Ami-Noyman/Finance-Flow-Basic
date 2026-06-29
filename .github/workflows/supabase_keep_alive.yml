@@ -1,0 +1,15 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # Runs at 12:00 UTC (3:00 PM Israel time) every day
+    - cron: '0 12 * * *'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -I -s https://lkiaivglqrjnfknqgzjv.supabase.co/rest/v1/
