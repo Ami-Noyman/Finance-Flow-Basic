@@ -66,6 +66,9 @@ const parseAiError = (error: any): string => {
     if (msg.includes("Quota exceeded") || msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
         return "הגעת למכסת הבקשות של Gemini. נא להמתין כדקה ולנסות שוב.";
     }
+    if (msg.includes("503") || msg.includes("high demand") || msg.includes("Service Unavailable")) {
+        return "שרתי הבינה המלאכותית של גוגל חווים עומס זמני (503). אנא נסה שוב בעוד מספר שניות.";
+    }
     if (msg.includes("API_KEY_MISSING")) {
         return "מפתח ה-API (Gemini Key) חסר בהגדרות המערכת.";
     }
