@@ -62,7 +62,12 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
                 saveRecentEmail(cleanEmail);
             }
         } catch (err: any) {
-            setError(err.message || "Authentication error.");
+            const msg = err?.message || "Authentication error.";
+            if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+                setError("Unable to reach the Supabase server. Please check your internet connection or verify that your Supabase project is active (not paused) in the Supabase Dashboard.");
+            } else {
+                setError(msg);
+            }
         } finally { setLoading(false); }
     };
 
@@ -79,7 +84,12 @@ export const Auth: React.FC<AuthProps> = ({ onConfigured, onAuthCheck }) => {
             if (error) throw error;
             setSuccessMsg("Reset link sent! Please check your inbox.");
         } catch (err: any) {
-            setError(err.message || "Error sending reset email.");
+            const msg = err?.message || "Error sending reset email.";
+            if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+                setError("Unable to reach the Supabase server. Please check your internet connection or verify that your Supabase project is active (not paused) in the Supabase Dashboard.");
+            } else {
+                setError(msg);
+            }
         } finally { setLoading(false); }
     };
 

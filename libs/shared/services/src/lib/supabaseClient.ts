@@ -39,7 +39,38 @@ export const isConfigured = () => {
 };
 
 const { url: finalUrl, key: finalKey } = getSupabaseConfig();
-export const supabase = createClient(finalUrl || 'https://placeholder.supabase.co', finalKey || 'placeholder');
+
+/**
+ * Custom lock implementation that wraps navigator.locks with a graceful fallback.
+ * Prevents "Acquiring an exclusive Navigator LockManager lock immediately failed"
+ * in browsers with strict storage partitioning or LockManager restrictions.
+ */
+const customAuthLock = async <R>(name: string, acquireTimeout: number, fn: () => Promise<R>): Promise<R> => {
+    if (typeof navigator !== 'undefined' && navigator?.locks?.request) {
+        try {
+            return await navigator.locks.request(
+                name,
+                acquireTimeout === 0 ? { mode: 'exclusive', ifAvailable: true } : { mode: 'exclusive' },
+                async (lock) => {
+                    if (lock) {
+                        return await fn();
+                    }
+                    // Fallback to direct execution when immediate lock acquisition is unavailable
+                    return await fn();
+                }
+            );
+        } catch {
+            return await fn();
+        }
+    }
+    return await fn();
+};
+
+export const supabase = createClient(finalUrl || 'https://placeholder.supabase.co', finalKey || 'placeholder', {
+    auth: {
+        lock: customAuthLock,
+    },
+});
 
 /**
  * Helper to get/init the singleton client (used by App.tsx and Auth.tsx)

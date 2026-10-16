@@ -13,9 +13,28 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping Supabase Database (PostgREST)
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://lkiaivglqrjnfknqgzjv.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxraWFpdmdscXJqbmZrbnFnemp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTgzNzQsImV4cCI6MjA4MTI5NDM3NH0.1vpgJx-NUmwsyPrcQc79VK6ktJv6rdQP_YqbqKjMWgQ' }}
         run: |
-          curl -I -s https://lkiaivglqrjnfknqgzjv.supabase.co/rest/v1/
+          echo "Pinging Supabase database at $SUPABASE_URL..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/accounts?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "Supabase REST API responded with HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error::Supabase keep-alive query failed (HTTP $HTTP_STATUS). Check if the project is paused in the Supabase Dashboard."
+            exit 1
+          fi
+
+      - name: Ping Supabase Auth Health
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://lkiaivglqrjnfknqgzjv.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxraWFpdmdscXJqbmZrbnFnemp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3MTgzNzQsImV4cCI6MjA4MTI5NDM3NH0.1vpgJx-NUmwsyPrcQc79VK6ktJv6rdQP_YqbqKjMWgQ' }}
+        run: |
+          curl -f -s "$SUPABASE_URL/auth/v1/health" -H "apikey: $SUPABASE_ANON_KEY" > /dev/null
 
       # GitHub disables scheduled workflows after 60 days of repo inactivity.
       # This step re-enables the workflow on every run so it never gets auto-disabled.
